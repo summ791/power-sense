@@ -1,42 +1,160 @@
-import { Toaster } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import NotFound from "@/pages/NotFound";
-import { Route, Switch } from "wouter";
-import ErrorBoundary from "./components/ErrorBoundary";
-import { ThemeProvider } from "./contexts/ThemeContext";
-import Home from "./pages/Home";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, Route, Switch, useLocation } from "wouter";
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Activity, AlertTriangle, ArrowRight, BarChart3, Bell, BookOpen, Calculator, CheckCircle2, ChevronDown, CircleHelp, ClipboardList, Download, FileCheck2, FileText, Gauge, History, Info, Menu, MoreHorizontal, Pencil, PlugZap, Printer, Save, Search, ShieldCheck, Trash2, Upload, X, Zap } from "lucide-react";
+import type { BillDraft, BillRecord } from "./types";
+import { emptyBillDraft, draftFromRecord } from "./types";
+import { analytics, billAmount, billUnits, chartRows, formatINR, formatNumber } from "./services/calculations";
+import { extractBillText } from "./services/ocr";
+import { parseElectricityBill, verifyDraft } from "./services/billParser";
+import { deleteAllBills, deleteBill, listBills, saveBill, updateBill } from "./services/storage";
+import { dataModeLabel, getSessionId, supabaseConfigured } from "./services/supabase";
+import { predictNextMonth } from "./services/prediction";
 
+const navItems = [
+  { href: "/", label: "Overview", icon: Gauge },
+  { href: "/analysis", label: "Bill analysis", icon: FileCheck2 },
+  { href: "/consumption", label: "Consumption", icon: BarChart3 },
+  { href: "/prediction", label: "Prediction", icon: Activity },
+  { href: "/history", label: "Bill history", icon: History },
+];
 
-function Router() {
-  return (
-    <Switch>
-      <Route path={"/"} component={Home} />
-      <Route path={"/404"} component={NotFound} />
-      {/* Final fallback route */}
-      <Route component={NotFound} />
-    </Switch>
-  );
-}
-
-// NOTE: About Theme
-// - First choose a default theme according to your design style (dark or light bg), than change color palette in index.css
-//   to keep consistent foreground/background color across components
-// - If you want to make theme switchable, pass `switchable` ThemeProvider and use `useTheme` hook
+const moneyFields: Array<keyof BillDraft> = ["energy_charge", "fixed_charge", "tax", "other_charge", "total_amount"];
+const numberFields: Array<keyof BillDraft> = ["previous_reading", "current_reading", "units_consumed", ...moneyFields];
 
 function App() {
-  return (
-    <ErrorBoundary>
-      <ThemeProvider
-        defaultTheme="light"
-        // switchable
-      >
-        <TooltipProvider>
-          <Toaster />
-          <Router />
-        </TooltipProvider>
-      </ThemeProvider>
-    </ErrorBoundary>
-  );
+  const [bills, setBills] = useState<BillRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [notice, setNotice] = useState<{ type: "success" | "error" | "info"; text: string } | null>(null);
+  const [draft, setDraft] = useState<BillDraft>(emptyBillDraft);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | undefined>();
+  const [ocrBusy, setOcrBusy] = useState(false);
+  const [ocrProgress, setOcrProgress] = useState(0);
+  const [mobileNav, setMobileNav] = useState(false);
+  const [location, navigate] = useLocation();
+
+  const refresh = async () => {
+    setLoading(true);
+    try { setBills(await listBills()); } catch (error) { setNotice({ type: "error", text: error instanceof Error ? error.message : "Unable to load saved bills." }); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { void refresh(); }, []);
+  useEffect(() => { setMobileNav(false); }, [location]);
+  useEffect(() => { if (notice) { const timer = window.setTimeout(() => setNotice(null), 6000); return () => window.clearTimeout(timer); } }, [notice]);
+
+  const onFile = (file?: File) => {
+    if (!file) { setPendingFile(undefined); return; }
+    const allowed = ["application/pdf", "image/jpeg", "image/png", "image/jpg"];
+    if (!allowed.includes(file.type) && !/\.(pdf|jpe?g|png)$/i.test(file.name)) { setNotice({ type: "error", text: "Unsupported format. Select a PDF, JPG, JPEG or PNG electricity bill." }); return; }
+    if (file.size > 15 * 1024 * 1024) { setNotice({ type: "error", text: "This file is larger than 15 MB. Please upload a smaller scan." }); return; }
+    setPendingFile(file); setNotice({ type: "info", text: "File ready. Start analysis to extract bill fields." });
+  };
+
+  const processFile = async () => {
+    if (!pendingFile) return;
+    setOcrBusy(true); setOcrProgress(0.05);
+    try {
+      const result = await extractBillText(pendingFile, setOcrProgress);
+      const parsed = parseElectricityBill(result.text, result.confidence);
+      setDraft(parsed); setEditingId(null); setOcrProgress(1);
+      setNotice({ type: "success", text: `Document processed across ${result.pages} page${result.pages === 1 ? "" : "s"}. Review the extracted fields before saving.` });
+    } catch (error) {
+      setNotice({ type: "error", text: error instanceof Error ? error.message : "OCR could not read this document. Try a clearer scan." });
+    } finally { setOcrBusy(false); }
+  };
+
+  const persist = async () => {
+    const verification = verifyDraft(draft);
+    if (verification.negative) { setNotice({ type: "error", text: "Current reading cannot be lower than previous reading. Correct the meter readings before saving." }); return; }
+    if (draft.total_amount !== null && draft.total_amount < 0) { setNotice({ type: "error", text: "Total bill amount cannot be negative." }); return; }
+    try {
+      if (editingId) await updateBill(editingId, draft); else await saveBill(draft, pendingFile);
+      await refresh(); setDraft(emptyBillDraft); setPendingFile(undefined); setEditingId(null); navigate("/history");
+      setNotice({ type: "success", text: "Bill saved to your current browser session." });
+    } catch (error) { setNotice({ type: "error", text: error instanceof Error ? error.message : "Unable to save this bill." }); }
+  };
+
+  const beginEdit = (bill: BillRecord) => { setDraft(draftFromRecord(bill)); setEditingId(bill.id); navigate("/analysis"); };
+  const remove = async (bill: BillRecord) => {
+    if (!window.confirm("Delete this bill and its stored source file? This cannot be undone.")) return;
+    try { await deleteBill(bill); await refresh(); setNotice({ type: "success", text: "Bill deleted." }); } catch (error) { setNotice({ type: "error", text: error instanceof Error ? error.message : "Unable to delete bill." }); }
+  };
+  const removeAll = async () => {
+    if (!bills.length || !window.confirm("Delete every bill in this browser session? This cannot be undone.")) return;
+    try { await deleteAllBills(); await refresh(); setNotice({ type: "success", text: "All session bills deleted." }); } catch (error) { setNotice({ type: "error", text: error instanceof Error ? error.message : "Unable to delete bills." }); }
+  };
+
+  return <div className="min-h-screen bg-[#f3f6f8] text-slate-900">
+    <Header mobileNav={mobileNav} setMobileNav={setMobileNav} />
+    <div className="utility-strip"><div className="container flex items-center justify-between gap-3"><span className="truncate">Electricity Bill & Consumption Analysis Portal</span><span className="status-live"><span className="status-dot" />Portal status: Active</span></div></div>
+    {notice && <div className={`notice ${notice.type}`} role="status"><div className="container flex items-center gap-3"><span className="notice-icon">{notice.type === "success" ? <CheckCircle2 size={16} /> : notice.type === "error" ? <AlertTriangle size={16} /> : <Info size={16} />}</span><span>{notice.text}</span><button className="ml-auto" aria-label="Dismiss notification" onClick={() => setNotice(null)}><X size={16} /></button></div></div>}
+    <main className="container py-6 md:py-8">
+      <Switch>
+        <Route path="/"><Overview bills={bills} loading={loading} navigate={navigate} /></Route>
+        <Route path="/analysis"><AnalysisPage bills={bills} draft={draft} setDraft={setDraft} pendingFile={pendingFile} onFile={onFile} onProcess={processFile} onSave={persist} onReset={() => { setDraft(emptyBillDraft); setEditingId(null); setPendingFile(undefined); }} busy={ocrBusy} progress={ocrProgress} editing={Boolean(editingId)} navigate={navigate} /></Route>
+        <Route path="/consumption"><ConsumptionPage bills={bills} loading={loading} /></Route>
+        <Route path="/prediction"><PredictionPage bills={bills} /></Route>
+        <Route path="/history"><HistoryPage bills={bills} loading={loading} onEdit={beginEdit} onDelete={remove} onDeleteAll={removeAll} /></Route>
+        <Route path="/help"><HelpPage /></Route>
+        <Route path="/contact"><ContactPage /></Route>
+        <Route><NotFound /></Route>
+      </Switch>
+    </main>
+    <Footer />
+  </div>;
 }
+
+function Header({ mobileNav, setMobileNav }: { mobileNav: boolean; setMobileNav: (value: boolean) => void }) {
+  const [location] = useLocation();
+  return <header className="site-header">
+    <div className="container header-main"><Link href="/" className="brand" aria-label="Power Sense home"><span className="brand-mark"><Zap size={23} strokeWidth={2.5} /></span><span><span className="brand-title">POWER SENSE</span><span className="brand-subtitle">Electricity utility portal</span></span></Link><div className="header-tools"><span className="session-badge"><ShieldCheck size={15} /> No login required</span><button className="mobile-menu" aria-label="Toggle navigation" onClick={() => setMobileNav(!mobileNav)}><Menu size={20} /></button></div></div>
+    <nav className={`main-nav ${mobileNav ? "is-open" : ""}`} aria-label="Primary navigation"><div className="container nav-inner">{navItems.map(({ href, label, icon: Icon }) => <Link key={href} href={href} className={`nav-link ${location === href ? "active" : ""}`}><Icon size={16} />{label}</Link>)}<span className="nav-spacer" /><Link href="/help" className={`nav-link ${location === "/help" ? "active" : ""}`}><CircleHelp size={16} />Help</Link><Link href="/contact" className={`nav-link ${location === "/contact" ? "active" : ""}`}><BookOpen size={16} />Contact</Link></div></nav>
+  </header>;
+}
+
+function PageHeading({ eyebrow, title, description, action }: { eyebrow?: string; title: string; description?: string; action?: React.ReactNode }) { return <div className="page-heading"><div><div className="eyebrow">{eyebrow ?? "POWER SENSE"}</div><h1>{title}</h1>{description && <p>{description}</p>}</div>{action}</div>; }
+
+function Overview({ bills, loading, navigate }: { bills: BillRecord[]; loading: boolean; navigate: (to: string) => void }) {
+  const stats = analytics(bills); const latest = bills.at(-1); const rows = chartRows(bills).slice(-6);
+  return <>
+    <section className="welcome-band"><div><div className="eyebrow light">DIGITAL CONSUMPTION SERVICES</div><h1>Electricity bill analysis</h1><p>Upload your electricity bill to review consumption, charges and estimated future usage.</p><div className="flex flex-wrap gap-3 mt-5"><button className="button button-light" onClick={() => navigate("/analysis")}><Upload size={17} />Upload electricity bill</button><button className="button button-ghost-light" onClick={() => navigate("/consumption")}><BarChart3 size={17} />View consumption</button></div></div><div className="welcome-seal"><PlugZap size={32} /><span>Session-based<br />secure records</span></div></section>
+    <div className="section-rule"><span>Service overview</span><span className="data-mode"><span className="status-dot" />{loading ? "Loading records" : dataModeLabel}</span></div>
+    <section className="summary-grid" aria-label="Consumption summary"><SummaryPanel icon={<FileText />} label="Current bill" value={latest ? formatINR(billAmount(latest)) : "—"} sub={latest?.provider || "No saved bill"} /><SummaryPanel icon={<Activity />} label="Current consumption" value={stats.current !== null ? `${formatNumber(stats.current)} kWh` : "—"} sub={stats.current !== null ? "Latest recorded reading" : "Upload a bill to begin"} /><SummaryPanel icon={<Calculator />} label="Average consumption" value={stats.average !== null ? `${formatNumber(stats.average)} kWh` : "—"} sub="All recorded bills" /><SummaryPanel icon={<ArrowRight />} label="Next-month estimate" value={bills.length > 1 ? `${formatNumber(predictNextMonth(bills).predictedUnits)} kWh` : "—"} sub={bills.length > 1 ? "Trend-based estimate" : "More history required"} /></section>
+    <section className="content-grid mt-6"><div className="panel panel-large"><div className="panel-heading"><div><div className="panel-kicker">RECORDED CONSUMPTION</div><h2>Monthly usage at a glance</h2></div><Link href="/consumption" className="text-link">Open analysis <ArrowRight size={15} /></Link></div>{rows.length ? <ChartFrame height={250}><AreaChart data={rows}><defs><linearGradient id="usageFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#1c78b8" stopOpacity={0.22} /><stop offset="100%" stopColor="#1c78b8" stopOpacity={0.01} /></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#dce5eb" /><XAxis dataKey="period" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} /><YAxis tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} width={36} /><Tooltip formatter={(value) => [`${value} kWh`, "Consumption"]} /><Area type="monotone" dataKey="units" stroke="#1769aa" strokeWidth={2.5} fill="url(#usageFill)" connectNulls /></AreaChart></ChartFrame> : <EmptyState compact onUpload={() => navigate("/analysis")} />}</div><div className="panel"><div className="panel-kicker">QUICK SERVICES</div><h2 className="mb-4">Manage your records</h2><div className="service-list"><ServiceLink icon={<FileCheck2 />} title="Analyse a bill" text="Extract and verify bill fields" href="/analysis" /><ServiceLink icon={<BarChart3 />} title="View consumption" text="Compare monthly usage" href="/consumption" /><ServiceLink icon={<Activity />} title="Future estimate" text="Review usage projections" href="/prediction" /><ServiceLink icon={<History />} title="Bill history" text="Search saved records" href="/history" /></div></div></section>
+    <InformationNotice />
+  </>;
+}
+
+function SummaryPanel({ icon, label, value, sub }: { icon: React.ReactNode; label: string; value: string; sub: string }) { return <div className="summary-panel"><span className="summary-icon">{icon}</span><div><div className="summary-label">{label}</div><div className="summary-value">{value}</div><div className="summary-sub">{sub}</div></div></div>; }
+function ServiceLink({ icon, title, text, href }: { icon: React.ReactNode; title: string; text: string; href: string }) { return <Link href={href} className="service-link"><span className="service-icon">{icon}</span><span><strong>{title}</strong><small>{text}</small></span><ArrowRight size={15} /></Link>; }
+function InformationNotice() { return <section className="info-notice"><Info size={18} /><div><strong>Important information</strong><p>Upload a clear electricity bill and verify extracted meter readings. Future bill amounts are estimates; actual billing depends on the applicable tariff and charges.</p></div></section>; }
+
+function AnalysisPage({ bills, draft, setDraft, pendingFile, onFile, onProcess, onSave, onReset, busy, progress, editing, navigate }: { bills: BillRecord[]; draft: BillDraft; setDraft: (draft: BillDraft) => void; pendingFile?: File; onFile: (file?: File) => void; onProcess: () => void; onSave: () => void; onReset: () => void; busy: boolean; progress: number; editing: boolean; navigate: (to: string) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null); const verification = verifyDraft(draft);
+  return <><PageHeading eyebrow="BILL ANALYSIS" title={editing ? "Edit saved bill" : "Electricity bill analysis"} description="Process a real bill, verify extracted information, and save the corrected record." action={<button className="button button-secondary" onClick={() => navigate("/history")}><History size={16} />View history</button>} /><div className="analysis-layout"><section className="panel upload-panel"><div className="panel-kicker">STEP 01 · DOCUMENT INTAKE</div><h2>Upload electricity bill</h2><p className="panel-intro">Supported formats: PDF, JPG, JPEG and PNG. Clear, high-resolution scans produce better extraction.</p><div className={`dropzone ${pendingFile ? "has-file" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); onFile(event.dataTransfer.files?.[0]); }} onClick={() => inputRef.current?.click()} role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") inputRef.current?.click(); }}><input ref={inputRef} type="file" hidden accept="application/pdf,image/jpeg,image/png" onChange={(event) => onFile(event.target.files?.[0])} />{pendingFile ? <><div className="file-badge"><FileText size={21} /></div><strong>{pendingFile.name}</strong><span>{(pendingFile.size / 1024 / 1024).toFixed(2)} MB · Ready for analysis</span><button className="text-link mt-2" onClick={(event) => { event.stopPropagation(); onFile(undefined); }}>Remove file</button></> : <><div className="upload-icon"><Upload size={22} /></div><strong>Drop your bill here or browse files</strong><span>PDF, JPG, JPEG or PNG · up to 15 MB</span></>}</div>{busy && <div className="progress-wrap"><div className="flex justify-between text-xs"><span>Reading document with OCR…</span><span>{Math.round(progress * 100)}%</span></div><div className="progress-track"><div className="progress-value" style={{ width: `${Math.max(5, progress * 100)}%` }} /></div></div>}<button className="button button-primary w-full mt-5" disabled={!pendingFile || busy} onClick={onProcess}>{busy ? "Processing document…" : "Upload & analyse"}<ArrowRight size={16} /></button><div className="privacy-line"><ShieldCheck size={15} />Stored privately and associated with this browser session</div></section><section className="panel editor-panel"><div className="panel-kicker">STEP 02 · VERIFY & SAVE</div><div className="flex items-start justify-between gap-3"><div><h2>Review extracted information</h2><p className="panel-intro">Every field is editable. Confirm readings before saving to your history.</p></div>{draft.ocr_confidence > 0 && <span className={`confidence ${draft.ocr_confidence > 0.7 ? "good" : "caution"}`}>{Math.round(draft.ocr_confidence * 100)}% OCR confidence</span>}</div>{verification.mismatch && <div className="warning-box"><AlertTriangle size={17} /><div><strong>Reading verification required</strong><span>Calculated consumption ({formatNumber(verification.calculated)} kWh) differs from the extracted units. Please verify the readings.</span></div></div>}{verification.negative && <div className="warning-box error"><AlertTriangle size={17} /><div><strong>Invalid meter readings</strong><span>Current reading must be equal to or greater than previous reading.</span></div></div>}<div className="form-section"><div className="form-section-title"><span>Consumer information</span></div><div className="form-grid"><Field label="Consumer number" value={draft.consumer_number} onChange={(value) => setDraft({ ...draft, consumer_number: value })} /><Field label="Customer name" value={draft.customer_name} onChange={(value) => setDraft({ ...draft, customer_name: value })} /><Field label="Electricity provider" value={draft.provider} onChange={(value) => setDraft({ ...draft, provider: value })} /><Field label="Meter number" value={draft.meter_number} onChange={(value) => setDraft({ ...draft, meter_number: value })} /></div></div><div className="form-section"><div className="form-section-title"><span>Bill information</span></div><div className="form-grid"><Field label="Billing date" type="date" value={draft.billing_date} onChange={(value) => setDraft({ ...draft, billing_date: value })} /><Field label="Billing period" value={draft.billing_period} onChange={(value) => setDraft({ ...draft, billing_period: value })} placeholder="e.g. Aug 2026" /><Field label="Due date" type="date" value={draft.due_date} onChange={(value) => setDraft({ ...draft, due_date: value })} /><Field label="Tariff / category" value={draft.tariff} onChange={(value) => setDraft({ ...draft, tariff: value })} /></div></div><div className="form-section"><div className="form-section-title"><span>Meter readings & charges</span><span className="form-helper">Amounts in ₹ · readings in kWh</span></div><div className="form-grid three"><Field label="Previous reading" number value={draft.previous_reading} onChange={(value) => setDraft({ ...draft, previous_reading: value === "" ? null : Number(value) })} /><Field label="Current reading" number value={draft.current_reading} onChange={(value) => setDraft({ ...draft, current_reading: value === "" ? null : Number(value) })} /><Field label="Units consumed" number value={draft.units_consumed} onChange={(value) => setDraft({ ...draft, units_consumed: value === "" ? null : Number(value) })} /><Field label="Energy charge" number value={draft.energy_charge} onChange={(value) => setDraft({ ...draft, energy_charge: value === "" ? null : Number(value) })} /><Field label="Fixed charge" number value={draft.fixed_charge} onChange={(value) => setDraft({ ...draft, fixed_charge: value === "" ? null : Number(value) })} /><Field label="Tax" number value={draft.tax} onChange={(value) => setDraft({ ...draft, tax: value === "" ? null : Number(value) })} /><Field label="Other charge" number value={draft.other_charge} onChange={(value) => setDraft({ ...draft, other_charge: value === "" ? null : Number(value) })} /><Field label="Total amount" number value={draft.total_amount} onChange={(value) => setDraft({ ...draft, total_amount: value === "" ? null : Number(value) })} /></div></div><div className="editor-actions"><button className="button button-secondary" onClick={onReset}><X size={16} />Clear</button><button className="button button-primary" onClick={onSave}><Save size={16} />{editing ? "Update bill" : "Save bill"}</button></div></section></div><div className="process-note"><FileCheck2 size={16} /><span>OCR reads the actual uploaded file in your browser. Always verify extracted values because bill layouts and scan quality vary.</span></div></>;
+}
+
+function Field({ label, value, onChange, type = "text", number = false, placeholder }: { label: string; value: string | number | null; onChange: (value: string) => void; type?: string; number?: boolean; placeholder?: string }) { return <label className="field"><span>{label}</span><input type={number ? "number" : type} value={value ?? ""} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} /></label>; }
+
+function ConsumptionPage({ bills, loading }: { bills: BillRecord[]; loading: boolean }) { const stats = analytics(bills); const rows = chartRows(bills); return <><PageHeading eyebrow="CONSUMPTION MONITORING" title="Electricity consumption analysis" description="Compare recorded usage and billing amounts across your saved electricity bills." action={<span className="data-mode"><span className="status-dot" />{loading ? "Loading" : `${bills.length} recorded bill${bills.length === 1 ? "" : "s"}`}</span>} /><section className="metric-row"><Metric label="Current consumption" value={stats.current !== null ? `${formatNumber(stats.current)} kWh` : "—"} /><Metric label="Previous consumption" value={stats.previous !== null ? `${formatNumber(stats.previous)} kWh` : "—"} /><Metric label="Difference" value={stats.difference !== null ? `${stats.difference >= 0 ? "+" : ""}${formatNumber(stats.difference)} kWh` : "—"} tone={stats.difference !== null && stats.difference > 0 ? "warning" : "positive"} /><Metric label="Change" value={stats.change !== null ? `${stats.change >= 0 ? "+" : ""}${formatNumber(stats.change, 1)}%` : "—"} tone={stats.change !== null && stats.change > 0 ? "warning" : "positive"} /></section><section className="content-grid mt-6"><div className="panel panel-large"><div className="panel-heading"><div><div className="panel-kicker">KILOWATT-HOUR TREND</div><h2>Monthly consumption</h2></div></div>{rows.length ? <ChartFrame height={300}><LineChart data={rows}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#dce5eb" /><XAxis dataKey="period" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} /><YAxis tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} width={38} /><Tooltip formatter={(value) => [`${value} kWh`, "Consumption"]} /><Line type="monotone" dataKey="units" stroke="#1769aa" strokeWidth={2.7} dot={{ r: 3, fill: "#1769aa" }} connectNulls /></LineChart></ChartFrame> : <EmptyState />}</div><div className="panel"><div className="panel-kicker">BILLING TREND</div><h2>Monthly bill</h2>{rows.length ? <ChartFrame height={300}><BarChart data={rows}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#dce5eb" /><XAxis dataKey="period" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} /><YAxis tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} width={45} /><Tooltip formatter={(value) => [formatINR(Number(value)), "Bill amount"]} /><Bar dataKey="amount" fill="#2b8a78" radius={[3, 3, 0, 0]} /></BarChart></ChartFrame> : <EmptyState compact />}</div></section><section className="panel mt-6"><div className="panel-heading"><div><div className="panel-kicker">STATISTICAL SUMMARY</div><h2>Consumption indicators</h2></div></div><div className="indicator-table"><Indicator label="Average consumption" value={stats.average !== null ? `${formatNumber(stats.average)} kWh` : "—"} /><Indicator label="Three-month average" value={stats.threeMonthAverage !== null ? `${formatNumber(stats.threeMonthAverage)} kWh` : "—"} /><Indicator label="Six-month average" value={stats.sixMonthAverage !== null ? `${formatNumber(stats.sixMonthAverage)} kWh` : "—"} /><Indicator label="Highest recorded usage" value={stats.highest !== null ? `${formatNumber(stats.highest)} kWh` : "—"} /><Indicator label="Lowest recorded usage" value={stats.lowest !== null ? `${formatNumber(stats.lowest)} kWh` : "—"} /></div></section></>; }
+function Metric({ label, value, tone }: { label: string; value: string; tone?: "warning" | "positive" }) { return <div className="metric"><span>{label}</span><strong className={tone ?? ""}>{value}</strong></div>; }
+function Indicator({ label, value }: { label: string; value: string }) { return <div className="indicator"><span>{label}</span><strong>{value}</strong></div>; }
+function ChartFrame({ children, height }: { children: React.ReactNode; height: number }) { return <div style={{ width: "100%", height }} aria-label="Data chart"> <ResponsiveContainer width="100%" height="100%">{children as any}</ResponsiveContainer></div>; }
+
+function PredictionPage({ bills }: { bills: BillRecord[] }) { const prediction = predictNextMonth(bills); const stats = analytics(bills); return <><PageHeading eyebrow="FORECASTING SERVICE" title="Next-month prediction" description="A transparent estimate based on your recorded consumption history—not an official electricity bill." action={<span className="estimate-label"><Activity size={15} />Informational estimate</span>} />{prediction.predictedUnits === null ? <div className="empty-panel"><div className="empty-icon"><Activity size={24} /></div><h2>More historical data is required.</h2><p>Save at least two verified bills to calculate a trend-based next-month estimate. Prediction quality improves as more monthly records are added.</p><Link href="/analysis" className="button button-primary"><Upload size={16} />Upload a bill</Link></div> : <><section className="prediction-hero"><div><div className="eyebrow light">ESTIMATED NEXT-MONTH CONSUMPTION</div><div className="prediction-number">{formatNumber(prediction.predictedUnits)} <span>kWh</span></div><p>Expected range: <strong>{formatNumber(prediction.rangeLow)}–{formatNumber(prediction.rangeHigh)} kWh</strong></p></div><div className="prediction-side"><span>Estimated bill range</span><strong>{formatINR(prediction.predictedBillLow)} – {formatINR(prediction.predictedBillHigh)}</strong><small>Based on an indicative slab tariff. Actual charges vary by provider.</small></div></section><section className="content-grid mt-6"><div className="panel"><div className="panel-kicker">PREDICTION BASIS</div><h2>How this estimate is formed</h2><div className="method-list"><Method number="01" title="Recorded history" text={prediction.basis} /><Method number="02" title="Calculation method" text={prediction.method} /><Method number="03" title="Tariff estimate" text="Indicative slab rates, fixed charge and 5% tax are used when complete tariff data is unavailable." /></div></div><div className="panel"><div className="panel-kicker">FITTING INDICATORS</div><h2>Model performance</h2><div className="performance-grid"><div><span>MAE</span><strong>{prediction.mae !== null ? `${formatNumber(prediction.mae, 1)} kWh` : "—"}</strong></div><div><span>MAPE</span><strong>{prediction.mape !== null ? `${formatNumber(prediction.mape, 1)}%` : "—"}</strong></div></div><div className="small-note"><Info size={15} />Accuracy indicators are shown only when enough history is available for back-testing.</div><div className="insight-list mt-5"><Insight text={stats.change !== null ? `Your latest consumption changed by ${formatNumber(Math.abs(stats.change), 1)}% compared with the previous recorded month.` : "Add another bill to compare month-to-month change."} /><Insight text={stats.sixMonthAverage !== null && stats.current !== null && stats.current > stats.sixMonthAverage ? "Current consumption is above your six-month average." : "The estimate uses your recorded consumption history."} /></div></div></section></>}</>; }
+function Method({ number, title, text }: { number: string; title: string; text: string }) { return <div className="method"><span>{number}</span><div><strong>{title}</strong><p>{text}</p></div></div>; }
+function Insight({ text }: { text: string }) { return <div className="insight"><CheckCircle2 size={16} /><span>{text}</span></div>; }
+
+function downloadExport(filename: string, content: string, type: string) { const blob = new Blob([content], { type }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = filename; link.click(); URL.revokeObjectURL(url); }
+function exportBills(bills: BillRecord[], format: "csv" | "json") { if (format === "json") downloadExport("power-sense-bills.json", JSON.stringify(bills, null, 2), "application/json"); else { const headers = ["billing_period", "billing_date", "provider", "consumer_number", "units_consumed", "total_amount"]; const csv = [headers.join(","), ...bills.map((bill) => headers.map((key) => JSON.stringify((bill as unknown as Record<string, unknown>)[key] ?? "")).join(","))].join("\n"); downloadExport("power-sense-bills.csv", csv, "text/csv"); } }
+function HistoryPage({ bills, loading, onEdit, onDelete, onDeleteAll }: { bills: BillRecord[]; loading: boolean; onEdit: (bill: BillRecord) => void; onDelete: (bill: BillRecord) => void; onDeleteAll: () => void }) { const [query, setQuery] = useState(""); const filtered = bills.filter((bill) => [bill.billing_period, bill.provider, bill.consumer_number, bill.customer_name].join(" ").toLowerCase().includes(query.toLowerCase())); return <><PageHeading eyebrow="RECORDS & DOCUMENTS" title="Bill history" description="Review and manage electricity bills saved to your current browser session." action={<div className="flex flex-wrap gap-2"><Link href="/analysis" className="button button-primary"><Upload size={16} />Upload bill</Link>{bills.length > 0 && <><button className="button button-secondary" onClick={() => exportBills(bills, "csv")}><Download size={15} />CSV</button><button className="button button-secondary" onClick={() => exportBills(bills, "json")}><Download size={15} />JSON</button><button className="button button-secondary" onClick={() => window.print()}><Printer size={15} />Print</button><button className="button button-danger-outline" onClick={onDeleteAll}><Trash2 size={15} />Delete all</button></>}</div>} /><section className="panel"><div className="table-toolbar"><div className="search-box"><Search size={17} /><input aria-label="Search bills" placeholder="Search provider, consumer or period" value={query} onChange={(event) => setQuery(event.target.value)} /></div><span className="result-count">{filtered.length} record{filtered.length === 1 ? "" : "s"}</span></div>{loading ? <div className="loading-row">Loading saved records…</div> : filtered.length === 0 ? <EmptyState onUpload={() => window.location.assign("/analysis")} /> : <div className="table-scroll"><table className="bill-table"><caption className="sr-only">Saved electricity bills</caption><thead><tr><th>Billing period</th><th>Units</th><th>Bill amount</th><th>Provider</th><th>Saved on</th><th className="text-right">Action</th></tr></thead><tbody>{filtered.map((bill) => <tr key={bill.id}><td><strong>{bill.billing_period || bill.billing_date || "Unspecified"}</strong><small>{bill.consumer_number || "Consumer number unavailable"}</small></td><td>{billUnits(bill) !== null ? `${formatNumber(billUnits(bill))} kWh` : "—"}</td><td>{formatINR(billAmount(bill))}</td><td>{bill.provider || "Not extracted"}</td><td>{new Date(bill.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</td><td><div className="row-actions"><button className="icon-button" aria-label="Edit bill" onClick={() => onEdit(bill)}><Pencil size={15} /></button><button className="icon-button danger" aria-label="Delete bill" onClick={() => onDelete(bill)}><Trash2 size={15} /></button></div></td></tr>)}</tbody></table></div>}</section><div className="privacy-card"><ShieldCheck size={18} /><div><strong>Privacy notice</strong><p>Your electricity bills are securely stored using Supabase and associated with your current browser session. No login is required. In preview mode, records remain in this browser only.</p></div></div></>; }
+
+function HelpPage() { return <><PageHeading eyebrow="USER SUPPORT" title="Help & guidance" description="A short guide to getting reliable results from the portal." /><section className="help-grid"><HelpCard icon={<Upload />} title="Upload a clear document" text="Use a well-lit, high-resolution scan. PDF, JPG, JPEG and PNG bills are supported up to 15 MB." /><HelpCard icon={<FileCheck2 />} title="Verify extracted fields" text="OCR is assisted reading. Check the consumer information, meter readings, units and total amount before saving." /><HelpCard icon={<Calculator />} title="Understand estimates" text="Predictions use your saved consumption history. They are indicative only and are not official bills." /><HelpCard icon={<ShieldCheck />} title="Session privacy" text="No account is created. A browser session ID keeps your records separated from other sessions when Supabase is configured." /></section><section className="panel faq-panel"><div className="panel-kicker">COMMON QUESTIONS</div><h2>Before you begin</h2><details open><summary>Why does a reading mismatch warning appear?</summary><p>The portal calculates current reading minus previous reading and compares it with the units printed on the bill. If the values differ, review and correct the editable fields.</p></details><details><summary>How is the next bill estimated?</summary><p>The estimate applies an extensible slab-based calculation with energy charges, a fixed charge and tax. If your provider tariff is not extracted, the result is clearly labelled as indicative.</p></details><details><summary>Can I use this without Supabase keys?</summary><p>Yes, the interface runs in local preview mode so you can test the full workflow. Add the Supabase URL and anonymous key to enable shared cloud persistence and private Storage uploads.</p></details></section></>; }
+function HelpCard({ icon, title, text }: { icon: React.ReactNode; title: string; text: string }) { return <div className="help-card"><span>{icon}</span><h2>{title}</h2><p>{text}</p></div>; }
+function ContactPage() { return <><PageHeading eyebrow="PORTAL INFORMATION" title="Contact & service information" description="Power Sense is a self-service analysis portal for personal electricity bill records." /><section className="contact-grid"><div className="panel"><div className="panel-kicker">SERVICE DESK</div><h2>Need assistance with a bill?</h2><p className="panel-intro">For official billing corrections, payment issues or supply complaints, contact the electricity distribution company listed on your bill. Power Sense does not issue bills or alter provider records.</p><div className="contact-line"><Bell size={17} /><span>Use your provider's official helpline printed on the bill.</span></div><div className="contact-line"><FileText size={17} /><span>Keep your consumer number ready when contacting the provider.</span></div></div><div className="panel"><div className="panel-kicker">ABOUT THIS PORTAL</div><h2>Power Sense</h2><p className="panel-intro">A browser-based tool to organize bill readings, understand consumption trends and create transparent indicative estimates.</p><div className="portal-facts"><div><span>Access</span><strong>Open, no login</strong></div><div><span>Storage</span><strong>{supabaseConfigured ? "Supabase private storage" : "Local browser preview"}</strong></div><div><span>Session</span><strong>{getSessionId().slice(0, 8)}…</strong></div></div></div></section></>; }
+function NotFound() { return <div className="empty-panel"><div className="empty-icon"><FileText size={24} /></div><h2>Page not found</h2><p>The requested portal page could not be found.</p><Link href="/" className="button button-primary">Return to overview</Link></div>; }
+function EmptyState({ compact = false, onUpload }: { compact?: boolean; onUpload?: () => void }) { return <div className={`empty-state ${compact ? "compact" : ""}`}><div className="empty-icon"><ClipboardList size={22} /></div><strong>No electricity bills have been added yet.</strong><span>Upload your first electricity bill to begin tracking your consumption.</span>{onUpload && <button className="button button-secondary mt-3" onClick={onUpload}><Upload size={15} />Upload electricity bill</button>}</div>; }
+function Footer() { return <footer className="site-footer"><div className="container footer-inner"><div><strong>POWER SENSE</strong><span>Electricity Bill & Consumption Analysis Portal</span></div><div className="footer-links"><Link href="/help">Help</Link><Link href="/contact">Contact</Link><span>Data stays session-scoped</span></div></div></footer>; }
 
 export default App;
