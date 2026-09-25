@@ -55,7 +55,7 @@ export const emptyBillDraft: BillDraft = {
   tax: null,
   other_charge: null,
   total_amount: null,
-  tariff: "",
+  tariff: "residential",
   ocr_confidence: 0,
 };
 

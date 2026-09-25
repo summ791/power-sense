@@ -1,6 +1,6 @@
 import type { BillRecord, PredictionResult } from "../types";
 import { average, billUnits, sortedBills } from "./calculations";
-import { estimateBill, estimateRange } from "./tariff";
+import { estimateRange, estimateTamilNaduBill, normaliseTamilNaduCategory, tariffCategoryLabel } from "./tariff";
 
 function linearForecast(values: number[]): number {
   const n = values.length;
@@ -49,8 +49,9 @@ export function predictNextMonth(bills: BillRecord[]): PredictionResult {
   }
   const predictedUnits = Math.round(forecast(values));
   const range = estimateRange(predictedUnits, Math.max(12, (Math.max(...values) - Math.min(...values)) * 0.3));
-  const lowBill = estimateBill(range.low).total;
-  const highBill = estimateBill(range.high).total;
+  const category = normaliseTamilNaduCategory(sortedBills(bills).at(-1)?.tariff);
+  const lowBill = estimateTamilNaduBill(range.low, category).total;
+  const highBill = estimateTamilNaduBill(range.high, category).total;
   const validation = errors(values, forecast);
   return {
     predictedUnits,
@@ -59,7 +60,7 @@ export function predictNextMonth(bills: BillRecord[]): PredictionResult {
     predictedBillLow: Math.round(lowBill),
     predictedBillHigh: Math.round(highBill),
     method,
-    basis: `Previous ${Math.min(values.length, 6)} recorded months of electricity consumption`,
+    basis: `Previous ${Math.min(values.length, 6)} recorded months of electricity consumption · ${tariffCategoryLabel(category)}`,
     mae: validation.mae,
     mape: validation.mape,
   };

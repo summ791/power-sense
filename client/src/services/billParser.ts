@@ -2,16 +2,27 @@ import { emptyBillDraft, type BillDraft } from "../types";
 import { safeNumber } from "./calculations";
 
 function cleaned(value: string) {
-  return value.replace(/[|]/g, " ").replace(/\s+/g, " ").trim();
+  return value
+    .replace(/[|]/g, " ")
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n")
+    .trim();
 }
 function afterLabel(text: string, labels: string[]) {
-  const pattern = new RegExp(`(?:${labels.join("|")})\\s*[:#-]?\\s*([^\\n]{2,50})`, "i");
-  return text.match(pattern)?.[1]?.trim() ?? "";
+  const pattern = new RegExp(`(?:${labels.join("|")})\\s*[:#-]?\\s*([^\\n]{0,50})(?:\\n([^\\n]{1,50}))?`, "i");
+  const match = text.match(pattern);
+  return (match?.[1]?.trim() || match?.[2]?.trim() || "");
 }
 function numericAfterLabel(text: string, labels: string[]) {
   const value = afterLabel(text, labels);
   const match = value.match(/-?\d[\d,]*(?:\.\d+)?/);
-  return match ? safeNumber(match[0]) : null;
+  if (match) return safeNumber(match[0]);
+  const marker = text.search(new RegExp(`(?:${labels.join("|")})\\s*[:#-]?`, "i"));
+  if (marker < 0) return null;
+  const nearby = text.slice(marker, marker + 180).match(/-?\d[\d,]*(?:\.\d+)?/);
+  return nearby ? safeNumber(nearby[0]) : null;
 }
 function dateAfterLabel(text: string, labels: string[]) {
   const value = afterLabel(text, labels);
@@ -46,12 +57,12 @@ export function parseElectricityBill(rawText: string, ocrConfidence = 0.6): Bill
   const found = [consumer, name, provider, meter, billingDate, dueDate, previous, current, printedUnits, energy, fixed, tax, other, total].filter((value) => value !== "" && value !== null).length;
   return {
     ...emptyBillDraft,
-    consumer_number: cleaned(consumer),
-    customer_name: cleaned(name),
-    provider: cleaned(provider),
-    meter_number: cleaned(meter),
+    consumer_number: cleaned(consumer).split("\n")[0] ?? "",
+    customer_name: cleaned(name).split("\n")[0] ?? "",
+    provider: cleaned(provider).split("\n")[0] ?? "",
+    meter_number: cleaned(meter).split("\n")[0] ?? "",
     billing_date: billingDate,
-    billing_period: cleaned(period),
+    billing_period: cleaned(period).split("\n")[0] ?? "",
     due_date: dueDate,
     previous_reading: previous,
     current_reading: current,
@@ -61,7 +72,7 @@ export function parseElectricityBill(rawText: string, ocrConfidence = 0.6): Bill
     tax,
     other_charge: other,
     total_amount: total,
-    tariff: cleaned(tariff),
+    tariff: cleaned(tariff).split("\n")[0] ?? "",
     ocr_confidence: Math.min(0.99, Math.max(0.1, ocrConfidence * (0.65 + found / 40))),
   };
 }
