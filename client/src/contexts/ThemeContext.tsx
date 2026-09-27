@@ -22,9 +22,13 @@ export function ThemeProvider({
   switchable = false,
 }: ThemeProviderProps) {
   const [theme, setTheme] = useState<Theme>(() => {
-    if (switchable) {
-      const stored = localStorage.getItem("theme");
-      return (stored as Theme) || defaultTheme;
+    if (switchable && typeof window !== "undefined") {
+      try {
+        const stored = window.sessionStorage.getItem("theme");
+        if (stored === "light" || stored === "dark") return stored;
+      } catch {
+        // Keep the default theme when browser storage is unavailable.
+      }
     }
     return defaultTheme;
   });
@@ -38,7 +42,11 @@ export function ThemeProvider({
     }
 
     if (switchable) {
-      localStorage.setItem("theme", theme);
+      try {
+        window.sessionStorage.setItem("theme", theme);
+      } catch {
+        // Theme changes still work for the current page when storage is blocked.
+      }
     }
   }, [theme, switchable]);
 
