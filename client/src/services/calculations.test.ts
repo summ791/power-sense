@@ -8,6 +8,7 @@ import {
 import {
   estimateBill,
   estimateTamilNaduBill,
+  inferTamilNaduBillingCycle,
   normaliseTamilNaduCategory,
 } from "./tariff";
 import { predictNextMonth } from "./prediction";
@@ -68,20 +69,79 @@ describe("bill calculations", () => {
   });
   it("calculates the legacy indicative slab bill", () =>
     expect(estimateBill(100).total).toBeGreaterThan(400));
-  it("calculates Tamil Nadu residential slabs progressively", () => {
-    const estimate = estimateTamilNaduBill(450, "residential", {
-      billingCycle: "bi-monthly",
-    });
-    expect(estimate.energy).toBeCloseTo(400 * 4.95 + 50 * 6.65, 2);
-    expect(estimate.fixed).toBe(0);
+  it("applies 200 free domestic units through 500 units per bi-monthly cycle", () => {
+    expect(
+      estimateTamilNaduBill(200, "residential", {
+        billingCycle: "bi-monthly",
+      }).energy
+    ).toBe(0);
+    expect(
+      estimateTamilNaduBill(300, "residential", {
+        billingCycle: "bi-monthly",
+      }).energy
+    ).toBeCloseTo(100 * 4.7, 2);
+    expect(
+      estimateTamilNaduBill(500, "residential", {
+        billingCycle: "bi-monthly",
+      }).energy
+    ).toBeCloseTo(200 * 4.7 + 100 * 6.3, 2);
+    expect(
+      estimateTamilNaduBill(501, "residential", {
+        billingCycle: "bi-monthly",
+      }).energy
+    ).toBeCloseTo(300 * 4.7 + 100 * 6.3 + 8.4, 2);
   });
-  it("calculates Tamil Nadu commercial threshold and fixed load charge", () => {
-    const estimate = estimateTamilNaduBill(120, "commercial", {
+  it("prorates the free-unit rule and consumption slabs for monthly bills", () => {
+    expect(
+      estimateTamilNaduBill(200, "residential", {
+        billingCycle: "monthly",
+      }).energy
+    ).toBeCloseTo(100 * 4.7, 2);
+    expect(
+      estimateTamilNaduBill(251, "residential", {
+        billingCycle: "monthly",
+      }).energy
+    ).toBeCloseTo(150 * 4.7 + 50 * 6.3 + 8.4, 2);
+  });
+  it("infers billing cycle using TNPDCL's 35-day guidance", () => {
+    expect(inferTamilNaduBillingCycle("2026-07-01 to 2026-07-31")).toBe(
+      "monthly"
+    );
+    expect(inferTamilNaduBillingCycle("01/07/2026 to 30/08/2026")).toBe(
+      "bi-monthly"
+    );
+    expect(inferTamilNaduBillingCycle("34 days")).toBe("monthly");
+    expect(inferTamilNaduBillingCycle("60 days")).toBe("bi-monthly");
+    expect(inferTamilNaduBillingCycle()).toBe("bi-monthly");
+  });
+  it("calculates LT-V payable energy, connected-load bands, and tax", () => {
+    const low = estimateTamilNaduBill(100, "commercial", {
       billingCycle: "bi-monthly",
       connectedLoadKw: 5,
     });
-    expect(estimate.energy).toBe(120 * 10.45);
-    expect(estimate.fixed).toBe(110 * 5 * 2);
+    expect(low.energy).toBe(100 * 6.45);
+    expect(low.fixed).toBe(110 * 5 * 2);
+    expect(low.tax).toBeCloseTo((low.energy + low.fixed) * 0.05, 2);
+
+    const subsidised = estimateTamilNaduBill(500, "commercial", {
+      billingCycle: "bi-monthly",
+      connectedLoadKw: 60,
+    });
+    expect(subsidised.energy).toBe(500 * 10.15);
+    expect(subsidised.fixed).toBe(332 * 60 * 2);
+    expect(subsidised.tax).toBeCloseTo(
+      (subsidised.energy + subsidised.fixed) * 0.05,
+      2
+    );
+
+    const overThreshold = estimateTamilNaduBill(501, "commercial", {
+      billingCycle: "bi-monthly",
+      connectedLoadKw: 5,
+    });
+    expect(overThreshold.energy).toBe(501 * 10.45);
+    expect(overThreshold.total).toBe(
+      overThreshold.energy + overThreshold.fixed + overThreshold.tax
+    );
     expect(normaliseTamilNaduCategory("LT-V commercial")).toBe("commercial");
     expect(normaliseTamilNaduCategory("Domestic LT-IA")).toBe("residential");
   });

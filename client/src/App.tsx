@@ -82,6 +82,7 @@ import {
   TAMIL_NADU_TARIFF_OPTIONS,
   TAMIL_NADU_TARIFF_SOURCE,
   estimateTamilNaduBill,
+  inferTamilNaduBillingCycle,
   tariffCategoryLabel,
 } from "./services/tariff";
 
@@ -1395,8 +1396,11 @@ function AnalysisPage({
           {draft.tariff ? (
             <>
               <strong>{tariffCategoryLabel(draft.tariff)}</strong> Tamil Nadu
-              model only: the illustrative estimate uses the TNERC FY 2025-26
-              schedule effective 1 July 2025.{" "}
+              model only: uses the latest published TNERC consumer-payable rates
+              (Order No. 6 of 2025) with the 2026 domestic subsidy update. The
+              2026 CPI-adjusted rate card has not been posted, so no unconfirmed
+              increase is assumed. Periods under 35 days use monthly bands;
+              other or unspecified periods use bi-monthly bands.{" "}
               <a
                 href={TAMIL_NADU_TARIFF_SOURCE}
                 target="_blank"
@@ -1406,7 +1410,7 @@ function AnalysisPage({
               </a>
               .{" "}
               {draft.units_consumed !== null
-                ? `Indicative amount: ₹${Math.round(estimateTamilNaduBill(draft.units_consumed, draft.tariff === "commercial" ? "commercial" : "residential").total).toLocaleString("en-IN")}. This is not a provider bill.`
+                ? `Indicative amount: ₹${Math.round(estimateTamilNaduBill(draft.units_consumed, draft.tariff === "commercial" ? "commercial" : "residential", { billingCycle: inferTamilNaduBillingCycle(draft.billing_period) }).total).toLocaleString("en-IN")}. This is not a provider bill.`
                 : "Enter units to see an illustrative estimate."}
             </>
           ) : (
