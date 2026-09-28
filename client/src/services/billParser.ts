@@ -29,6 +29,44 @@ function explicitAfterLabel(text: string, labels: string[]) {
 }
 
 function numericAfterLabel(text: string, labels: string[]) {
+  // Prefer a number on the same OCR line as the specific label. This avoids reading adjacent table columns as one large consumption value.
+  for (const line of text.split(/\r?\n/)) {
+    for (const label of labels) {
+      const sameLine = line.match(new RegExp(`(?:${label})\\s*[:#-]?\\s*(.*)import { emptyBillDraft, type BillDraft } from "../types";
+import { safeNumber } from "./calculations";
+
+function cleaned(value: string) {
+  return value
+    .replace(/[|]/g, " ")
+    .split(/\r?\n/)
+    .map(line => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+}
+
+function afterLabel(text: string, labels: string[]) {
+  const pattern = new RegExp(
+    `(?:${labels.join("|")})\\s*[:#-]?\\s*([^\\n]{0,70})(?:\\n([^\\n]{1,70}))?`,
+    "i"
+  );
+  const match = text.match(pattern);
+  return match?.[1]?.trim() || match?.[2]?.trim() || "";
+}
+
+function explicitAfterLabel(text: string, labels: string[]) {
+  const pattern = new RegExp(
+    `(?:^|\\n)\\s*(?:${labels.join("|")})\\s*[:#]\\s*([^\\n]{0,70})`,
+    "im"
+  );
+  return text.match(pattern)?.[1]?.trim() ?? "";
+}
+
+, "i"));
+      const number = sameLine?.[1]?.match(/-?\\d[\\d,]*(?:\\.\\d+)?/);
+      if (number) return safeNumber(number[0]);
+    }
+  }
   const value = afterLabel(text, labels);
   const match = value.match(/-?\d[\d,]*(?:\.\d+)?/);
   if (match) return safeNumber(match[0]);
