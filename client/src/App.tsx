@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, Route, Switch, useLocation } from "wouter";
+import { Link, Redirect, Route, Switch, useLocation } from "wouter";
 import {
   Area,
   AreaChart,
@@ -32,6 +32,7 @@ import {
   Gauge,
   History,
   Info,
+  LogOut,
   Menu,
   MoreHorizontal,
   Pencil,
@@ -42,9 +43,19 @@ import {
   ShieldCheck,
   Trash2,
   Upload,
+  UserRound,
   X,
   Zap,
 } from "lucide-react";
+import { useAuth } from "./contexts/AuthContext";
+import {
+  AccountPage,
+  ForgotPasswordPage,
+  LoginPage,
+  PublicLandingPage,
+  ResetPasswordPage,
+  SignUpPage,
+} from "./pages/AuthPages";
 import type { BillDraft, BillRecord } from "./types";
 import { emptyBillDraft, draftFromRecord } from "./types";
 import {
@@ -65,11 +76,7 @@ import {
   saveBill,
   updateBill,
 } from "./services/storage";
-import {
-  dataModeLabel,
-  getSessionId,
-  supabaseConfigured,
-} from "./services/supabase";
+import { dataModeLabel, supabaseConfigured } from "./services/supabase";
 import { predictNextMonth } from "./services/prediction";
 import {
   TAMIL_NADU_TARIFF_OPTIONS,
@@ -101,6 +108,39 @@ const numberFields: Array<keyof BillDraft> = [
 ];
 
 function App() {
+  const { user, loading } = useAuth();
+  const [location] = useLocation();
+
+  if (loading) {
+    return (
+      <div className="auth-loading" role="status">
+        Restoring your secure account session…
+      </div>
+    );
+  }
+
+  if (!user) {
+    if (location === "/") return <PublicLandingPage />;
+    if (location === "/login") return <LoginPage />;
+    if (location === "/signup") return <SignUpPage />;
+    if (location === "/forgot-password") return <ForgotPasswordPage />;
+    if (location === "/reset-password") return <ResetPasswordPage />;
+    return <Redirect to={`/login?next=${encodeURIComponent(location)}`} />;
+  }
+
+  if (
+    location === "/login" ||
+    location === "/signup" ||
+    location === "/forgot-password"
+  ) {
+    return <Redirect to="/" />;
+  }
+  if (location === "/reset-password") return <ResetPasswordPage />;
+  return <AuthenticatedApp />;
+}
+
+function AuthenticatedApp() {
+  const { user } = useAuth();
   const [bills, setBills] = useState<BillRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<{
@@ -132,8 +172,12 @@ function App() {
     }
   };
   useEffect(() => {
+    setBills([]);
+    setDraft(emptyBillDraft);
+    setEditingId(null);
+    setPendingFile(undefined);
     void refresh();
-  }, []);
+  }, [user?.id]);
   useEffect(() => {
     setMobileNav(false);
   }, [location]);
@@ -250,7 +294,7 @@ function App() {
       navigate("/history");
       setNotice({
         type: "success",
-        text: "Bill saved to your current browser session.",
+        text: "Bill saved to your account.",
       });
     } catch (error) {
       setNotice({
@@ -288,14 +332,14 @@ function App() {
     if (
       !bills.length ||
       !window.confirm(
-        "Delete every bill in this browser session? This cannot be undone."
+        "Delete every bill in your account? This cannot be undone."
       )
     )
       return;
     try {
       await deleteAllBills();
       await refresh();
-      setNotice({ type: "success", text: "All session bills deleted." });
+      setNotice({ type: "success", text: "All account bills deleted." });
     } catch (error) {
       setNotice({
         type: "error",
@@ -382,6 +426,9 @@ function App() {
               onDeleteAll={removeAll}
             />
           </Route>
+          <Route path="/account">
+            <AccountPage />
+          </Route>
           <Route path="/help">
             <HelpPage />
           </Route>
@@ -405,7 +452,22 @@ function Header({
   mobileNav: boolean;
   setMobileNav: (value: boolean) => void;
 }) {
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
+  const { user, signOut } = useAuth();
+  const [logoutError, setLogoutError] = useState("");
+
+  const handleSignOut = async () => {
+    setLogoutError("");
+    try {
+      await signOut();
+      navigate("/login");
+    } catch (error) {
+      setLogoutError(
+        error instanceof Error ? error.message : "Unable to sign out."
+      );
+    }
+  };
+
   return (
     <header className="site-header">
       <div className="container header-main">
@@ -419,9 +481,23 @@ function Header({
           </span>
         </Link>
         <div className="header-tools">
-          <span className="session-badge">
-            <ShieldCheck size={15} /> No login required
-          </span>
+          {logoutError && (
+            <span className="header-error" role="alert">
+              {logoutError}
+            </span>
+          )}
+          <Link className="session-badge header-account" href="/account">
+            <UserRound size={15} />
+            <span>
+              {user?.user_metadata?.full_name || user?.email || "Account"}
+            </span>
+          </Link>
+          <button
+            className="button button-secondary header-signout"
+            onClick={handleSignOut}
+          >
+            <LogOut size={15} /> Sign out
+          </button>
           <button
             className="mobile-menu"
             aria-label="Toggle navigation"
@@ -460,6 +536,13 @@ function Header({
           >
             <BookOpen size={16} />
             Contact
+          </Link>
+          <Link
+            href="/account"
+            className={`nav-link ${location === "/account" ? "active" : ""}`}
+          >
+            <UserRound size={16} />
+            Account
           </Link>
         </div>
       </nav>
@@ -774,7 +857,7 @@ function Overview({
           <div className="loading-row">Loading saved bills…</div>
         ) : recentBills.length === 0 ? (
           <div className="loading-row">
-            No bills have been saved in this browser session yet.
+            No bills have been saved to your account yet.
           </div>
         ) : (
           <div className="table-scroll">
@@ -1013,7 +1096,7 @@ function AnalysisPage({
           </button>
           <div className="privacy-line">
             <ShieldCheck size={15} />
-            Stored privately and associated with this browser session
+            Original bills are stored privately with your account when saved
           </div>
         </section>
         <section className="panel editor-panel">
@@ -1853,7 +1936,7 @@ function HistoryPage({
       <PageHeading
         eyebrow="RECORDS & DOCUMENTS"
         title="Bill history"
-        description="Review and manage electricity bills saved to your current browser session."
+        description="Review and manage electricity bills saved to your account."
         action={
           <div className="flex flex-wrap gap-2">
             <Link href="/analysis" className="button button-primary">
@@ -2131,10 +2214,9 @@ function HistoryPage({
         <div>
           <strong>Privacy notice</strong>
           <p>
-            Your bills are stored in Supabase and associated with a random ID in
-            this browser. The database and private file bucket check that ID on
-            every request; the ID is the browser's bearer session token, so keep
-            this browser profile private. No account or login is required.
+            Your saved bills and private source files belong to your signed-in
+            account. Database and Storage access policies check account
+            ownership on every request.
           </p>
         </div>
       </div>
@@ -2181,8 +2263,8 @@ function HelpPage() {
         />
         <HelpCard
           icon={<ShieldCheck />}
-          title="Session privacy"
-          text="No account is created. A browser session ID keeps your records separated from other sessions when Supabase is configured."
+          title="Account privacy"
+          text="Sign in to access your own records. Database and private file policies prevent other accounts from viewing your bills."
         />
       </section>
       <section className="panel faq-panel">
@@ -2277,7 +2359,7 @@ function ContactPage() {
           <div className="portal-facts">
             <div>
               <span>Access</span>
-              <strong>Open, no login</strong>
+              <strong>Signed-in account</strong>
             </div>
             <div>
               <span>Storage</span>
@@ -2288,8 +2370,8 @@ function ContactPage() {
               </strong>
             </div>
             <div>
-              <span>Session</span>
-              <strong>{getSessionId().slice(0, 8)}…</strong>
+              <span>Ownership</span>
+              <strong>Private to your account</strong>
             </div>
           </div>
         </div>
@@ -2347,7 +2429,7 @@ function Footer() {
         <div className="footer-links">
           <Link href="/help">Help</Link>
           <Link href="/contact">Contact</Link>
-          <span>Data stays session-scoped</span>
+          <span>Data is account-scoped</span>
         </div>
       </div>
     </footer>

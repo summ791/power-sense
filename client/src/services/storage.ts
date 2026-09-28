@@ -1,5 +1,5 @@
 import type { BillDraft, BillRecord } from "../types";
-import { getSessionId, supabase, supabaseConfigured } from "./supabase";
+import { supabase, supabaseConfigured } from "./supabase";
 
 export type TariffData = {
   category?: string | null;
@@ -8,14 +8,14 @@ export type TariffData = {
 
 export function serializeBillDraft(
   draft: BillDraft,
-  sessionId: string,
+  userId: string,
   sourceFilePath: string | null,
   id: string = crypto.randomUUID(),
   timestamp = new Date().toISOString()
 ) {
   return {
     id,
-    session_id: sessionId,
+    user_id: userId,
     consumer_number: draft.consumer_number || null,
     customer_name: draft.customer_name || null,
     provider: draft.provider || null,
@@ -64,7 +64,7 @@ export function deserializeBillRecord(
 
   return {
     id: String(row.id),
-    session_id: String(row.session_id),
+    user_id: String(row.user_id),
     consumer_number: stringOrEmpty(row.consumer_number),
     customer_name: stringOrEmpty(row.customer_name),
     provider: stringOrEmpty(row.provider),
@@ -94,10 +94,19 @@ export function deserializeBillRecord(
 function requireSupabase() {
   if (!supabaseConfigured || !supabase) {
     throw new Error(
-      "Supabase is not configured. Bill data was not saved locally. Please try again after the service connection is configured."
+      "Supabase is not configured. Bill data was not saved. Please contact the site administrator."
     );
   }
   return supabase;
+}
+
+async function requireAuthenticatedClient() {
+  const client = requireSupabase();
+  const { data, error } = await client.auth.getUser();
+  if (error || !data.user) {
+    throw new Error("Please sign in to access your saved bills.");
+  }
+  return { client, user: data.user };
 }
 
 function mimeType(file: File): string {
@@ -109,12 +118,20 @@ function mimeType(file: File): string {
   return "image/jpeg";
 }
 
+function assertOwnedPath(path: string, userId: string) {
+  if (!path.startsWith(`${userId}/`)) {
+    throw new Error(
+      "This source file does not belong to the signed-in account."
+    );
+  }
+}
+
 export async function listBills(): Promise<BillRecord[]> {
-  const client = requireSupabase();
+  const { client, user } = await requireAuthenticatedClient();
   const { data, error } = await client
     .from("bills")
     .select("*")
-    .eq("session_id", getSessionId())
+    .eq("user_id", user.id)
     .order("billing_date", { ascending: true, nullsFirst: true })
     .order("created_at", { ascending: true });
   if (error) throw new Error(error.message);
@@ -127,14 +144,13 @@ export async function saveBill(
   draft: BillDraft,
   file?: File
 ): Promise<BillRecord> {
-  const client = requireSupabase();
-  const sessionId = getSessionId();
+  const { client, user } = await requireAuthenticatedClient();
   const id = crypto.randomUUID();
   let sourceFilePath: string | null = null;
 
   if (file) {
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    sourceFilePath = `${sessionId}/${id}-${safeName}`;
+    sourceFilePath = `${user.id}/${id}-${safeName}`;
     const { error } = await client.storage
       .from("electricity-bills")
       .upload(sourceFilePath, file, {
@@ -144,7 +160,7 @@ export async function saveBill(
     if (error) throw new Error(`Original bill upload failed: ${error.message}`);
   }
 
-  const record = serializeBillDraft(draft, sessionId, sourceFilePath, id);
+  const record = serializeBillDraft(draft, user.id, sourceFilePath, id);
   const { data, error } = await client
     .from("bills")
     .insert(record)
@@ -163,11 +179,11 @@ export async function updateBill(
   id: string,
   draft: BillDraft
 ): Promise<BillRecord> {
-  const client = requireSupabase();
-  const serialized = serializeBillDraft(draft, getSessionId(), null, id);
+  const { client, user } = await requireAuthenticatedClient();
+  const serialized = serializeBillDraft(draft, user.id, null, id);
   const {
     id: _id,
-    session_id: _sessionId,
+    user_id: _userId,
     source_file_path: _path,
     created_at: _createdAt,
     ...fields
@@ -176,7 +192,7 @@ export async function updateBill(
     .from("bills")
     .update({ ...fields, updated_at: new Date().toISOString() })
     .eq("id", id)
-    .eq("session_id", getSessionId())
+    .eq("user_id", user.id)
     .select("*")
     .single();
   if (error) throw new Error(error.message);
@@ -184,7 +200,8 @@ export async function updateBill(
 }
 
 export async function getSourceFileUrl(path: string): Promise<string> {
-  const client = requireSupabase();
+  const { client, user } = await requireAuthenticatedClient();
+  assertOwnedPath(path, user.id);
   const { data, error } = await client.storage
     .from("electricity-bills")
     .createSignedUrl(path, 60);
@@ -193,16 +210,22 @@ export async function getSourceFileUrl(path: string): Promise<string> {
 }
 
 export async function deleteBill(bill: BillRecord): Promise<void> {
-  const client = requireSupabase();
+  const { client, user } = await requireAuthenticatedClient();
+  if (bill.user_id !== user.id) {
+    throw new Error("This bill does not belong to the signed-in account.");
+  }
+  if (bill.source_file_path) {
+    assertOwnedPath(bill.source_file_path, user.id);
+  }
   const { data, error } = await client
     .from("bills")
     .delete()
     .eq("id", bill.id)
-    .eq("session_id", getSessionId())
+    .eq("user_id", user.id)
     .select("id")
     .maybeSingle();
   if (error) throw new Error(error.message);
-  if (!data) throw new Error("Bill not found in this browser session.");
+  if (!data) throw new Error("Bill not found in this account.");
 
   if (bill.source_file_path) {
     const { error: storageError } = await client.storage
@@ -216,24 +239,23 @@ export async function deleteBill(bill: BillRecord): Promise<void> {
 }
 
 export async function deleteAllBills(): Promise<void> {
-  const client = requireSupabase();
+  const { client, user } = await requireAuthenticatedClient();
   const bills = await listBills();
-  const { error } = await client
-    .from("bills")
-    .delete()
-    .eq("session_id", getSessionId());
-  if (error) throw new Error(error.message);
-
   const paths = bills
     .map(bill => bill.source_file_path)
     .filter((path): path is string => Boolean(path));
+  paths.forEach(path => assertOwnedPath(path, user.id));
+
+  const { error } = await client.from("bills").delete().eq("user_id", user.id);
+  if (error) throw new Error(error.message);
+
   if (paths.length) {
     const { error: storageError } = await client.storage
       .from("electricity-bills")
       .remove(paths);
     if (storageError)
       throw new Error(
-        `Bill records were deleted, but some source files could not be removed: ${storageError.message}`
+        `Bills were deleted, but some source files could not be removed: ${storageError.message}`
       );
   }
 }

@@ -23,7 +23,7 @@ export type BillDraft = {
 
 export type BillRecord = BillDraft & {
   id: string;
-  session_id: string;
+  user_id: string;
   source_file_path: string | null;
   created_at: string;
   updated_at: string;
@@ -67,7 +67,7 @@ export const emptyBillDraft: BillDraft = {
 export function draftFromRecord(record: BillRecord): BillDraft {
   const {
     id: _id,
-    session_id: _session,
+    user_id: _user,
     source_file_path: _path,
     created_at: _created,
     updated_at: _updated,

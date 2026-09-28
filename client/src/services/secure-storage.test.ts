@@ -5,6 +5,8 @@ import { verifyDraft } from "./billParser";
 import { predictNextMonth } from "./prediction";
 import { deserializeBillRecord, serializeBillDraft } from "./storage";
 
+const ownerId = "2df50d0e-8a2e-47a6-8c9f-8d3347f3db48";
+
 function makeBill(
   id: string,
   date: string,
@@ -14,7 +16,7 @@ function makeBill(
   return {
     ...emptyBillDraft,
     id,
-    session_id: "2df50d0e-8a2e-47a6-8c9f-8d3347f3db48",
+    user_id: ownerId,
     billing_date: date,
     billing_period: date.slice(0, 7),
     units_consumed: units,
@@ -25,8 +27,8 @@ function makeBill(
   };
 }
 
-describe("secure bill persistence and data handling", () => {
-  it("stores tariff details and OCR confidence as JSONB without a legacy tariff column", () => {
+describe("authenticated bill persistence and data handling", () => {
+  it("stores the authenticated owner, tariff details, and OCR confidence", () => {
     const draft = {
       ...emptyBillDraft,
       tariff: "commercial",
@@ -35,20 +37,23 @@ describe("secure bill persistence and data handling", () => {
     };
     const row = serializeBillDraft(
       draft,
-      "2df50d0e-8a2e-47a6-8c9f-8d3347f3db48",
-      "2df50d0e-8a2e-47a6-8c9f-8d3347f3db48/11111111-bill.pdf",
+      ownerId,
+      `${ownerId}/11111111-bill.pdf`,
       "11111111-1111-4111-8111-111111111111",
       "2026-09-27T00:00:00.000Z"
     );
+    expect(row.user_id).toBe(ownerId);
     expect(row.tariff_data).toEqual({
       category: "commercial",
       description: "LT-V / General purpose",
     });
     expect(row.ocr_confidence).toEqual({ score: 0.87 });
-    expect(row.source_file_path).toContain(row.session_id);
+    expect(row.source_file_path?.startsWith(`${ownerId}/`)).toBe(true);
+    expect(row).not.toHaveProperty("session_id");
     expect(row).not.toHaveProperty("tariff");
 
     const restored = deserializeBillRecord(row);
+    expect(restored.user_id).toBe(ownerId);
     expect(restored.tariff).toBe("commercial");
     expect(restored.tariff_description).toBe("LT-V / General purpose");
     expect(restored.ocr_confidence).toBe(0.87);

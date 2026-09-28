@@ -1,17 +1,18 @@
 # Power Sense
 
-Power Sense is an electricity bill and consumption analysis portal for reviewing real PDF/image bills without creating an account. It extracts readable bill text in the browser, presents editable fields for verification, stores session-scoped records, visualises consumption history, and creates transparent next-month estimates.
+Power Sense is an electricity-bill and consumption-analysis portal. Users sign in with email and password, review real PDF/image bills, visualize their own usage history, and view transparent next-month estimates. Saved records and source documents are account-scoped.
 
 ## Features
 
-- Real PDF text extraction and browser OCR for JPG, JPEG, and PNG bills using `pdfjs-dist` and `tesseract.js`.
+- Email/password sign-up, login, logout, profile name updates, and password reset.
+- Real PDF text extraction and browser OCR for selectable-text and scanned PDFs, plus JPG, JPEG, and PNG bills using `pdfjs-dist` and `tesseract.js`.
 - Editable extraction review for consumer details, readings, units, charges, dates, tariff and total amount.
 - Meter-reading validation with a calculated units check and mismatch warning.
-- Consumption history, monthly usage and bill charts using actual saved data.
-- Trend-based next-month consumption and indicative bill-range prediction with documented method, MAE and MAPE when enough history exists.
-- Session-based bill history with search, edit and delete.
-- Supabase PostgreSQL, private Storage and row-level security when configured; local browser persistence is available for preview mode.
-- Responsive, accessible utility-board presentation with no login or registration.
+- Account-specific bill history with search, edit, delete, and CSV/JSON export.
+- Consumption history, monthly usage, and bill charts using saved data.
+- Trend-based next-month consumption and indicative bill-range prediction with documented method, MAE, and MAPE when enough history exists.
+- Supabase PostgreSQL and private Storage protected with row-level security; all bill rows and source files are owned by the authenticated user.
+- Responsive, accessible utility-board presentation.
 
 ## Technology stack
 
@@ -25,26 +26,32 @@ cp .env.example .env
 pnpm dev
 ```
 
-Open the Vite URL shown in the terminal. The project can be previewed without Supabase keys; in that mode bills are stored in `localStorage` for the current browser only.
+Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` to the public values for the Supabase project. Authentication is required for bill analysis and saved data; the app does not fall back to local anonymous storage.
 
 ## Supabase setup
 
-1. Create a Supabase project.
-2. Open the SQL Editor and run [`supabase/migrations/001_power_sense.sql`](supabase/migrations/001_power_sense.sql).
-3. Copy the project URL and public anonymous key into `.env` as `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
-4. Restart Vite after changing `.env`.
+For a new project, apply migrations in order:
 
-The migration creates the `bills` table, indexes, a private `electricity-bills` bucket, and RLS policies. A browser session UUID is sent as `x-session-id` and is used to scope both rows and file paths. The service-role key is never used in the frontend.
+1. [`supabase/migrations/001_power_sense.sql`](supabase/migrations/001_power_sense.sql) creates the bill table, private `electricity-bills` bucket, and the original policies.
+2. [`supabase/migrations/002_user_owned_auth.sql`](supabase/migrations/002_user_owned_auth.sql) makes `user_id` required, removes anonymous `session_id` ownership, and replaces row/file policies with `auth.uid()` ownership.
 
-### Database model
+The second migration requires the old anonymous rows to be safely migrated to a verified owner or removed first. It is safe to apply to an empty `bills` table. For existing records, never assign ownership based on browser identity without explicit owner confirmation.
 
-`bills` stores consumer details, dates, meter readings, consumption, charges, total amount, tariff metadata, source file path, OCR confidence, and timestamps. The migration indexes session ID, billing date and consumer number.
+Configure Supabase Auth's email provider and URL settings:
+
+- Set the Site URL to the production origin.
+- Allow the production origin and `/reset-password` redirect, plus the local development origin when testing locally.
+- Configure a reliable SMTP provider for production email confirmation and password-reset delivery.
+
+Only the public project URL and publishable/anonymous key belong in the browser environment. Never expose a service-role key in the frontend.
+
+### Database and Storage ownership
+
+`public.bills.user_id` references `auth.users.id` and is non-null. RLS restricts reads, inserts, updates, and deletes to `auth.uid()`. Private files are stored under `{user_id}/{bill_id}-{filename}` and Storage policies restrict upload/read/delete to the matching authenticated user folder.
 
 ## OCR process
 
-PDFs with a selectable text layer are parsed with `pdfjs-dist`. Images are passed to `tesseract.js` for real OCR in the browser. The parser accepts common label variants such as Previous Reading, Opening Reading, Present Reading, Units Consumed, Energy Charge, Amount Payable and Net Payable. Because utility bills vary, the result is always shown as an editable form and should be verified before saving.
-
-Scanned/image-only PDFs currently surface a clear message asking for a clear image export. This avoids pretending that an unreadable PDF was successfully processed. A production deployment can extend the same `extractBillText` service with a Supabase Edge Function that rasterises PDF pages before Tesseract processing.
+PDFs with a selectable text layer are parsed with `pdfjs-dist`. Scanned PDFs and images are rendered and passed to `tesseract.js` for real OCR in the browser. The parser accepts common label variants such as Previous Reading, Opening Reading, Present Reading, Units Consumed, Energy Charge, Amount Payable, and Net Payable. Because utility bills vary, extracted results are shown as an editable form and should be verified before saving.
 
 ## Prediction methodology
 
@@ -58,20 +65,18 @@ pnpm check
 pnpm build
 ```
 
-`pnpm build` creates a Vite production bundle and the static host server bundle supplied by the WebDev scaffold.
-
 ## Deployment
 
-For Vercel, Netlify or Cloudflare Pages, deploy the Vite output with the existing project configuration, set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` as public build-time environment variables, and configure SPA fallback to `index.html`. Supabase remains the only application backend. Never expose a service-role key.
+The existing Vercel project builds the Vite output and uses `vercel.json` rewrites for direct application and Auth routes. Ensure the public `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` build variables are set. Supabase is the only application backend.
 
 ## Privacy and limitations
 
-No login is required. A random browser session ID associates records with the current session. With Supabase configured, uploaded source files are private and protected by Storage policies. With preview mode, records and files stay in the browser session. OCR and prediction results are estimates and should be verified against the official bill and provider tariff.
+A user must sign in to access the application. Database row-level security and private Storage policies enforce account ownership independently of client-side filters. Signed source-file links are short-lived. OCR and prediction results are estimates and should be checked against the official bill and applicable tariff.
 
 ## Troubleshooting
 
+- **Email confirmation/reset link does not return to Power Sense:** add the production origin and `/reset-password` to Supabase Auth's allowed redirect URLs.
+- **Auth emails are delayed or not delivered:** configure custom SMTP in Supabase Auth for production use.
+- **Storage or bill permission error:** confirm migrations are applied, the user is signed in, and the private Storage folder begins with that user's Auth UUID.
 - **OCR confidence is low:** upload a higher-resolution scan with good contrast and minimal skew.
-- **PDF cannot be read:** export the page as a clear PNG/JPG or configure a server-side rasterisation function as described above.
-- **Supabase permission error:** rerun the migration and confirm the anonymous key is from the same project; check that the `x-session-id` header is allowed by the RLS policies.
-- **No saved history:** confirm that the browser has not cleared local storage when using preview mode, or inspect the Supabase `bills` table.
 - **Build errors after dependency changes:** run `pnpm install`, then `pnpm check` and `pnpm build`.

@@ -25,7 +25,7 @@ describe("bill calculations", () => {
     expect(average([100, null, 200, 300])).toBe(200));
   it("groups ISO billing dates by their recorded month", () => {
     const base = {
-      session_id: "test-session",
+      user_id: "test-user",
       previous_reading: null,
       current_reading: null,
       consumer_number: "",
@@ -102,7 +102,7 @@ describe("bill calculations", () => {
   it("uses history for a prediction", () => {
     const bills = [210, 220, 230, 240].map((units, index) => ({
       id: String(index),
-      session_id: "test",
+      user_id: "test-user",
       billing_date: `2026-0${index + 1}-01`,
       billing_period: `Month ${index + 1}`,
       units_consumed: units,

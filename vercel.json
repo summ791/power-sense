@@ -6,6 +6,11 @@
     { "source": "/prediction", "destination": "/index.html" },
     { "source": "/history", "destination": "/index.html" },
     { "source": "/help", "destination": "/index.html" },
-    { "source": "/contact", "destination": "/index.html" }
+    { "source": "/contact", "destination": "/index.html" },
+    { "source": "/login", "destination": "/index.html" },
+    { "source": "/signup", "destination": "/index.html" },
+    { "source": "/forgot-password", "destination": "/index.html" },
+    { "source": "/reset-password", "destination": "/index.html" },
+    { "source": "/account", "destination": "/index.html" }
   ]
 }
