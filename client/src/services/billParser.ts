@@ -20,6 +20,14 @@ function afterLabel(text: string, labels: string[]) {
   return match?.[1]?.trim() || match?.[2]?.trim() || "";
 }
 
+function explicitAfterLabel(text: string, labels: string[]) {
+  const pattern = new RegExp(
+    `(?:^|\\n)\\s*(?:${labels.join("|")})\\s*[:#]\\s*([^\\n]{0,70})`,
+    "im"
+  );
+  return text.match(pattern)?.[1]?.trim() ?? "";
+}
+
 function numericAfterLabel(text: string, labels: string[]) {
   const value = afterLabel(text, labels);
   const match = value.match(/-?\d[\d,]*(?:\.\d+)?/);
@@ -92,7 +100,14 @@ export function parseElectricityBill(
   );
   const provider =
     providerMatch?.[1] ??
-    afterLabel(text, ["provider", "discom", "utility", "electricity board"]);
+    explicitAfterLabel(text, [
+      "electricity\\s+provider",
+      "provider\\s+name",
+      "provider",
+      "discom",
+      "utility(?:\\s+name)?",
+      "electricity\\s+board",
+    ]);
   const consumer = afterLabel(text, [
     "consumer (?:no|number|id)",
     "customer (?:no|number|id)",

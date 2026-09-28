@@ -1,3 +1,5 @@
+import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+
 export type OCRResult = { text: string; confidence: number; pages: number };
 
 type Progress = (value: number) => void;
@@ -20,6 +22,7 @@ async function imageOCR(file: Blob, onProgress?: Progress): Promise<OCRResult> {
 
 async function pdfText(file: File, onProgress?: Progress): Promise<OCRResult> {
   const pdfjs = await import("pdfjs-dist");
+  pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
   const pdf = await pdfjs.getDocument({
     data: await file.arrayBuffer(),
     useSystemFonts: true,
@@ -29,9 +32,23 @@ async function pdfText(file: File, onProgress?: Progress): Promise<OCRResult> {
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
       const page = await pdf.getPage(pageNumber);
       const content = await page.getTextContent();
-      pages.push(
-        content.items.map(item => ("str" in item ? item.str : "")).join(" ")
-      );
+      const lines: string[] = [];
+      let lineY: number | null = null;
+      let parts: string[] = [];
+      for (const item of content.items) {
+        if (!("str" in item)) continue;
+        const value = item.str.trim();
+        if (!value) continue;
+        const y = item.transform[5];
+        if (lineY !== null && Math.abs(y - lineY) > 2) {
+          lines.push(parts.join(" "));
+          parts = [];
+        }
+        parts.push(value);
+        lineY = y;
+      }
+      if (parts.length > 0) lines.push(parts.join(" "));
+      pages.push(lines.join("\n"));
     }
     const text = pages.join("\n").trim();
     if (text.length > 40) {
