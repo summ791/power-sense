@@ -56,8 +56,6 @@ DROP POLICY IF EXISTS "users can upload own bill files" ON storage.objects;
 DROP POLICY IF EXISTS "users can read own bill files" ON storage.objects;
 DROP POLICY IF EXISTS "users can delete own bill files" ON storage.objects;
 
-ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
-
 CREATE POLICY "users can upload own bill files"
   ON storage.objects FOR INSERT TO authenticated
   WITH CHECK (
