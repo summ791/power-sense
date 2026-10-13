@@ -3,12 +3,6 @@
   "buildCommand": "pnpm build",
   "outputDirectory": "dist/public",
   "framework": null,
-  "functions": {
-    "api/predict.py": {
-      "includeFiles": "models/*_runtime.json",
-      "maxDuration": 10
-    }
-  },
   "rewrites": [
     { "source": "/analysis", "destination": "/index.html" },
     { "source": "/consumption", "destination": "/index.html" },

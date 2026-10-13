@@ -81,14 +81,6 @@ A user must sign in to access the application. Database row-level security and p
 - **OCR confidence is low:** upload a higher-resolution scan with good contrast and minimal skew.
 - **Build errors after dependency changes:** run `pnpm install`, then `pnpm check` and `pnpm build`.
 
-## Supplied AI model service
-
-The project includes the two user-supplied model bundles under `models/` and a Vercel Python function at `api/predict.py`. The original pickle files are preserved for audit, while the deployment uses JSON runtime exports of the same fitted preprocessing and estimator parameters. The units runtime evaluates the `GradientBoostingRegressor` tree ensemble and the bill runtime evaluates the CatBoost symmetric-tree ensemble with the same outputs verified locally against the original pipelines. The API does not substitute a tariff formula for either model and does not invent missing model features.
-
-Send a `POST` request to `/api/predict` with all 38 original feature columns under `features`. Set `models` to `['units']`, `['bill']`, or both. The response keeps `predicted_kwh` and `predicted_amount` separate and includes the domestic subsidy result. The existing deterministic Tamil Nadu tariff estimate remains separate and transparent.
-
-The free deployment is serverless and available on demand rather than a continuously resident Python process. Vercel may sleep the function while idle, then starts it when a request arrives. The endpoint returns HTTP 410 after 31 December 2026. The supplied model files are included in this public repository because that deployment choice was explicitly approved.
-
 ## Tamil Nadu domestic subsidy
 
-For eligible residential/domestic LT-IA consumers on a bi-monthly cycle, the shared calculation applies 200 free units at exactly 500 units or below, and 100 free units above 500 units. Commercial consumers and monthly cycles do not receive this domestic subsidy. The payable units and subsidy rule are returned by the model endpoint and are also used by the deterministic tariff estimate.
+For eligible residential/domestic LT-IA consumers on a bi-monthly cycle, the shared calculation applies 200 free units at exactly 500 units or below, and 100 free units above 500 units. Commercial consumers and monthly cycles do not receive this domestic subsidy. The payable units and subsidy rule are displayed alongside the deterministic tariff estimate.

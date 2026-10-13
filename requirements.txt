@@ -1,1 +1,0 @@
-# Pure-standard-library inference runtime. The supplied models are exported to JSON runtime artifacts.
