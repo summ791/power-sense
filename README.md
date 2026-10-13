@@ -83,7 +83,7 @@ A user must sign in to access the application. Database row-level security and p
 
 ## Supplied AI model service
 
-The project includes the two user-supplied model bundles under `models/` and a Vercel Python function at `api/predict.py`. The bundles are loaded independently with their original preprocessing: the units bundle uses `GradientBoostingRegressor`, while the bill bundle uses `CatBoostRegressor`. The API does not substitute a tariff formula for either model and does not invent missing model features.
+The project includes the two user-supplied model bundles under `models/` and a Vercel Python function at `api/predict.py`. The original pickle files are preserved for audit, while the deployment uses JSON runtime exports of the same fitted preprocessing and estimator parameters. The units runtime evaluates the `GradientBoostingRegressor` tree ensemble and the bill runtime evaluates the CatBoost symmetric-tree ensemble with the same outputs verified locally against the original pipelines. The API does not substitute a tariff formula for either model and does not invent missing model features.
 
 Send a `POST` request to `/api/predict` with all 38 original feature columns under `features`. Set `models` to `['units']`, `['bill']`, or both. The response keeps `predicted_kwh` and `predicted_amount` separate and includes the domestic subsidy result. The existing deterministic Tamil Nadu tariff estimate remains separate and transparent.
 

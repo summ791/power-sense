@@ -1,8 +1,10 @@
 # Power Sense model bundles
 
-These are the user-supplied model artifacts used by `api/predict.py`.
+The original user-supplied artifacts are preserved as `electricity_units_model.pkl` and `electricity_bill_model.pkl`. They remain available for audit and reproducibility but are not imported by the Vercel function.
 
-- `electricity_units_model.pkl`: GradientBoostingRegressor bundle for predicted consumption.
-- `electricity_bill_model.pkl`: CatBoostRegressor bundle for predicted bill amount.
+For the free Vercel deployment, the same fitted preprocessing and estimator parameters are exported to `*_runtime.json` files. The endpoint evaluates those JSON artifacts with the Python standard library only. Local regression tests compare the lightweight evaluator against the original scikit-learn and CatBoost outputs for a fixed feature row.
 
-Both bundles contain their original `ColumnTransformer` preprocessing and are loaded independently. The API requires all original feature columns; it does not invent appliance, weather, or household inputs. The serverless endpoint is available on demand until 31 December 2026 and returns HTTP 410 after that date.
+- Units model: `GradientBoostingRegressor` tree ensemble.
+- Bill model: CatBoost symmetric-tree ensemble.
+
+Both outputs remain separate. The endpoint requires all original model feature columns and does not invent appliance, weather, household, or billing inputs. It is available on demand until 31 December 2026 and returns HTTP 410 after that date.
