@@ -309,6 +309,9 @@ h2 { color: var(--navy); font-size: 18px; font-weight: 800; letter-spacing: -.01
 .assistant-identity strong { font-size: 13px; letter-spacing: .01em; }
 .assistant-identity span { margin-top: 4px; color: #b8d0df; font-size: 10px; }
 .assistant-identity span i { display: inline-block; width: 6px; height: 6px; margin-right: 5px; background: #6ee0a8; border-radius: 50%; }
+.assistant-header-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.assistant-new-chat { display: inline-flex; align-items: center; gap: 4px; min-height: 29px; padding: 0 8px; color: #c8deea; border: 1px solid rgba(184,208,223,.35); border-radius: 4px; font-size: 10px; font-weight: 700; transition: color 140ms ease, background 140ms ease, border-color 140ms ease; }
+.assistant-new-chat:hover { color: white; background: rgba(255,255,255,.12); border-color: rgba(184,208,223,.7); }
 .assistant-icon-button { display: grid; place-items: center; width: 31px; height: 31px; flex: 0 0 auto; color: #b8d0df; border-radius: 4px; transition: color 140ms ease, background 140ms ease; }
 .assistant-icon-button:hover { color: white; background: rgba(255,255,255,.12); }
 .assistant-messages { display: flex; flex: 1; flex-direction: column; gap: 12px; overflow-y: auto; padding: 18px 15px 12px; background: #f7fafb; }

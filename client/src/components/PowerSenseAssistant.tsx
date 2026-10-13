@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { Bot, ChevronDown, MessageCircle, Send, Sparkles, X, Zap } from "lucide-react";
+import { Bot, ChevronDown, MessageCircle, Plus, Send, Sparkles, X, Zap } from "lucide-react";
 import { estimateTamilNaduBill, inferTamilNaduBillingCycle, normaliseTamilNaduCategory } from "../services/tariff";
 
 type ChatMessage = {
@@ -118,6 +118,12 @@ export function PowerSenseAssistant() {
     setDraft("");
   };
 
+  const startNewChat = () => {
+    setMessages([openingMessage]);
+    setDraft("");
+    nextId.current = 2;
+  };
+
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     submit(draft);
@@ -135,9 +141,15 @@ export function PowerSenseAssistant() {
                 <span><i /> Available in your browser</span>
               </div>
             </div>
-            <button className="assistant-icon-button" onClick={() => setOpen(false)} aria-label="Close assistant">
-              <X size={18} />
-            </button>
+            <div className="assistant-header-actions">
+              <button className="assistant-new-chat" onClick={startNewChat} aria-label="Start a new chat">
+                <Plus size={14} />
+                <span>New chat</span>
+              </button>
+              <button className="assistant-icon-button" onClick={() => setOpen(false)} aria-label="Close assistant">
+                <X size={18} />
+              </button>
+            </div>
           </header>
 
           <div className="assistant-messages" ref={messagesRef} aria-live="polite">
@@ -169,7 +181,7 @@ export function PowerSenseAssistant() {
             />
             <button type="submit" aria-label="Send question" disabled={!draft.trim()}><Send size={16} /></button>
           </form>
-          <p className="assistant-disclaimer">Guidance only. Verify final charges against the official bill.</p>
+          <p className="assistant-disclaimer">Guidance only. Chats are not saved. Verify final charges against the official bill.</p>
         </section>
       )}
 
