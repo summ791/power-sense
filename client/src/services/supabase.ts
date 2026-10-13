@@ -21,3 +21,13 @@ export const supabase: SupabaseClient | null = supabaseConfigured
 export const dataModeLabel = supabaseConfigured
   ? "Supabase Auth · account-scoped"
   : "Supabase configuration required";
+
+export function getSessionId() {
+  const key = "power-sense-session-id";
+  if (typeof window === "undefined") return "server-session";
+  const existing = window.sessionStorage.getItem(key);
+  if (existing) return existing;
+  const created = crypto.randomUUID();
+  window.sessionStorage.setItem(key, created);
+  return created;
+}

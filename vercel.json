@@ -1,5 +1,14 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "pnpm build",
+  "outputDirectory": "dist/public",
+  "framework": null,
+  "functions": {
+    "api/predict.py": {
+      "includeFiles": ["models/electricity_units_model.pkl", "models/electricity_bill_model.pkl"],
+      "maxDuration": 10
+    }
+  },
   "rewrites": [
     { "source": "/analysis", "destination": "/index.html" },
     { "source": "/consumption", "destination": "/index.html" },

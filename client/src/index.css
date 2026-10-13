@@ -293,3 +293,14 @@ h2 { color: var(--navy); font-size: 18px; font-weight: 800; letter-spacing: -.01
 
 .header-error { color: #9b3a3a; font-size: 11px; }
 @media (max-width: 700px) { .header-error { display: none; } }
+
+.model-inputs-details { margin-top: 18px; padding-top: 15px; border-top: 1px solid #e5edf1; }
+.model-inputs-details summary { color: var(--navy); font-size: 12px; font-weight: 800; cursor: pointer; }
+.model-input-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.model-input-grid .field span { min-height: 28px; font-size: 10px; }
+.model-input-grid input { min-height: 36px; font-size: 12px; }
+.model-results { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.model-result-card { display: flex; flex-direction: column; gap: 7px; padding: 16px; background: #f7fafb; border: 1px solid #dce5eb; }
+.model-result-card span { color: var(--ink-soft); font-size: 11px; }
+.model-result-card strong { color: var(--navy); font-size: 22px; }
+@media (max-width: 700px) { .model-input-grid, .model-results { grid-template-columns: 1fr; } }

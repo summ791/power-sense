@@ -78,6 +78,7 @@ import {
 } from "./services/storage";
 import { dataModeLabel, supabaseConfigured } from "./services/supabase";
 import { predictNextMonth } from "./services/prediction";
+import { ModelPredictionPanel } from "./components/ModelPredictionPanel";
 import {
   TAMIL_NADU_TARIFF_OPTIONS,
   TAMIL_NADU_TARIFF_SOURCE,
@@ -1699,6 +1700,7 @@ function PredictionPage({ bills }: { bills: BillRecord[] }) {
           </span>
         }
       />
+      <ModelPredictionPanel />
       {prediction.predictedUnits === null ? (
         <div className="empty-panel">
           <div className="empty-icon">
