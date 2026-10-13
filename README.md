@@ -11,6 +11,7 @@ Power Sense is an electricity-bill and consumption-analysis portal. Users sign i
 - Account-specific bill history with search, edit, delete, and CSV/JSON export.
 - Consumption history, monthly usage, and bill charts using saved data.
 - Trend-based next-month consumption and indicative bill-range prediction with documented method, MAE, and MAPE when enough history exists.
+- Built-in Power Sense Assistant for bill, meter-unit, OCR, tariff, subsidy, payment, savings, and electricity-safety guidance.
 - Supabase PostgreSQL and private Storage protected with row-level security; all bill rows and source files are owned by the authenticated user.
 - Responsive, accessible utility-board presentation.
 

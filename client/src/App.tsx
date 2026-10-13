@@ -78,6 +78,7 @@ import {
 } from "./services/storage";
 import { dataModeLabel, supabaseConfigured } from "./services/supabase";
 import { predictNextMonth } from "./services/prediction";
+import { PowerSenseAssistant } from "./components/PowerSenseAssistant";
 import {
   TAMIL_NADU_TARIFF_OPTIONS,
   TAMIL_NADU_TARIFF_SOURCE,
@@ -121,7 +122,14 @@ function App() {
   }
 
   if (!user) {
-    if (location === "/") return <PublicLandingPage />;
+    if (location === "/") {
+      return (
+        <>
+          <PublicLandingPage />
+          <PowerSenseAssistant />
+        </>
+      );
+    }
     if (location === "/login") return <LoginPage />;
     if (location === "/signup") return <SignUpPage />;
     if (location === "/forgot-password") return <ForgotPasswordPage />;
@@ -442,6 +450,7 @@ function AuthenticatedApp() {
         </Switch>
       </main>
       <Footer />
+      <PowerSenseAssistant />
     </div>
   );
 }
