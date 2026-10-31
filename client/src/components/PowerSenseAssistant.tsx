@@ -1,5 +1,5 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
-import { Bot, ChevronDown, MessageCircle, Plus, Send, Sparkles, X, Zap } from "lucide-react";
+import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
+import { Bot, ChevronDown, MessageCircle, Plus, Send, X } from "lucide-react";
 import { estimateTamilNaduBill, inferTamilNaduBillingCycle, normaliseTamilNaduCategory } from "../services/tariff";
 
 type ChatMessage = {
@@ -9,6 +9,69 @@ type ChatMessage = {
 };
 
 type ApiMessage = { role: "assistant" | "user"; content: string };
+
+const inlineMarkdownToken = /(\*\*[^*]+\*\*|__[^_]+__|`[^`]+`|(?<!\*)\*[^*]+\*(?!\*)|(?<!_)_[^_]+_(?!_))/g;
+
+function renderInlineMarkdown(text: string): ReactNode[] {
+  return text.split(inlineMarkdownToken).filter(Boolean).map((part, index) => {
+    if ((part.startsWith("**") && part.endsWith("**")) || (part.startsWith("__") && part.endsWith("__"))) {
+      return <strong key={index}>{part.slice(2, -2)}</strong>;
+    }
+    if (part.startsWith("`") && part.endsWith("`")) {
+      return <code key={index}>{part.slice(1, -1)}</code>;
+    }
+    if ((part.startsWith("*") && part.endsWith("*")) || (part.startsWith("_") && part.endsWith("_"))) {
+      return <em key={index}>{part.slice(1, -1)}</em>;
+    }
+    return part;
+  });
+}
+
+export function renderAssistantText(markdown: string): ReactNode[] {
+  const lines = markdown.split(/\r?\n/).map((line) => line.trim());
+  const content: ReactNode[] = [];
+  let index = 0;
+  while (index < lines.length) {
+    const line = lines[index];
+    if (!line) { index += 1; continue; }
+
+    const heading = line.match(/^#{1,3}\s+(.+)$/);
+    if (heading) {
+      content.push(<h3 key={`heading-${index}`}>{renderInlineMarkdown(heading[1])}</h3>);
+      index += 1;
+      continue;
+    }
+
+    if (/^[-*]\s+/.test(line)) {
+      const items: string[] = [];
+      while (index < lines.length && /^[-*]\s+/.test(lines[index])) {
+        items.push(lines[index].replace(/^[-*]\s+/, ""));
+        index += 1;
+      }
+      content.push(<ul key={`ul-${index}`}>{items.map((item, itemIndex) => <li key={itemIndex}>{renderInlineMarkdown(item)}</li>)}</ul>);
+      continue;
+    }
+
+    if (/^\d+[.)]\s+/.test(line)) {
+      const items: string[] = [];
+      while (index < lines.length && /^\d+[.)]\s+/.test(lines[index])) {
+        items.push(lines[index].replace(/^\d+[.)]\s+/, ""));
+        index += 1;
+      }
+      content.push(<ol key={`ol-${index}`}>{items.map((item, itemIndex) => <li key={itemIndex}>{renderInlineMarkdown(item)}</li>)}</ol>);
+      continue;
+    }
+
+    const paragraph = [line];
+    index += 1;
+    while (index < lines.length && lines[index] && !/^#{1,3}\s+/.test(lines[index]) && !/^[-*]\s+/.test(lines[index]) && !/^\d+[.)]\s+/.test(lines[index])) {
+      paragraph.push(lines[index]);
+      index += 1;
+    }
+    content.push(<p key={`paragraph-${index}`}>{renderInlineMarkdown(paragraph.join(" "))}</p>);
+  }
+  return content;
+}
 
 const quickQuestions = [
   "How do I analyse a bill?",
@@ -147,7 +210,7 @@ export function PowerSenseAssistant() {
         <section className="assistant-panel" role="dialog" aria-modal="false" aria-labelledby="assistant-title">
           <header className="assistant-header">
             <div className="assistant-identity">
-              <span className="assistant-avatar"><Bot size={19} /></span>
+              <span className="assistant-avatar" aria-hidden="true"><Bot size={21} strokeWidth={2.2} /></span>
               <div>
                 <strong id="assistant-title">Power Sense Assistant</strong>
                 <span><i /> AI-powered · Nemotron free route</span>
@@ -167,15 +230,18 @@ export function PowerSenseAssistant() {
           <div className="assistant-messages" ref={messagesRef} aria-live="polite">
             {messages.map((message) => (
               <div className={`assistant-message ${message.role}`} key={message.id}>
-                {message.role === "assistant" && <span className="assistant-message-mark"><Zap size={12} /></span>}
-                <p>{message.text}</p>
+                {message.role === "assistant" ? (
+                  <div className="assistant-message-content">{renderAssistantText(message.text)}</div>
+                ) : (
+                  <p>{message.text}</p>
+                )}
               </div>
             ))}
           </div>
 
           {messages.length === 1 && (
             <div className="assistant-suggestions" aria-label="Suggested questions">
-              <span><Sparkles size={13} /> Try a topic</span>
+              <span>Try a topic</span>
               {quickQuestions.map((question) => (
                 <button key={question} onClick={() => void submit(question)} disabled={isSending}>{question}</button>
               ))}
