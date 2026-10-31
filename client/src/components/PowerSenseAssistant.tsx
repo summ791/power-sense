@@ -1,5 +1,5 @@
 import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
-import { Bot, ChevronDown, MessageCircle, Plus, Send, X } from "lucide-react";
+import { Bot, ChevronDown, MessageCircle, Plus, Send, X, Zap } from "lucide-react";
 import { estimateTamilNaduBill, inferTamilNaduBillingCycle, normaliseTamilNaduCategory } from "../services/tariff";
 
 type ChatMessage = {
@@ -231,7 +231,10 @@ export function PowerSenseAssistant() {
             {messages.map((message) => (
               <div className={`assistant-message ${message.role}`} key={message.id}>
                 {message.role === "assistant" ? (
-                  <div className="assistant-message-content">{renderAssistantText(message.text)}</div>
+                  <>
+                    <span className="assistant-message-mark" aria-hidden="true"><Zap size={12} /></span>
+                    <div className="assistant-message-content">{renderAssistantText(message.text)}</div>
+                  </>
                 ) : (
                   <p>{message.text}</p>
                 )}
