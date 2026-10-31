@@ -11,13 +11,13 @@ Power Sense is an electricity-bill and consumption-analysis portal. Users sign i
 - Account-specific bill history with search, edit, delete, and CSV/JSON export.
 - Consumption history, monthly usage, and bill charts using saved data.
 - Trend-based next-month consumption and indicative bill-range prediction with documented method, MAE, and MAPE when enough history exists.
-- Built-in Power Sense Assistant for bill, meter-unit, OCR, tariff, subsidy, payment, savings, and electricity-safety guidance.
+- OpenRouter-powered Power Sense Assistant using NVIDIA Nemotron 3 Ultra free routing, with deterministic local meter-reading and Tamil Nadu estimate calculations.
 - Supabase PostgreSQL and private Storage protected with row-level security; all bill rows and source files are owned by the authenticated user.
 - Responsive, accessible utility-board presentation.
 
 ## Technology stack
 
-React, TypeScript, Vite, Tailwind CSS, Recharts, Supabase JS, Supabase PostgreSQL, Supabase Storage, `pdfjs-dist`, and `tesseract.js`.
+React, TypeScript, Vite, Tailwind CSS, Recharts, Supabase JS, Supabase PostgreSQL, Supabase Storage, Vercel Functions, OpenRouter, `pdfjs-dist`, and `tesseract.js`.
 
 ## Local installation
 
@@ -27,7 +27,7 @@ cp .env.example .env
 pnpm dev
 ```
 
-Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` to the public values for the Supabase project. Authentication is required for bill analysis and saved data; the app does not fall back to local anonymous storage.
+Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` to the public values for the Supabase project. For the AI assistant in production, set `OPENROUTER_API_KEY` as a server-side Vercel environment variable; never prefix it with `VITE_` or commit it. Authentication is required for bill analysis and saved data; the app does not fall back to local anonymous storage.
 
 ## Supabase setup
 
@@ -68,11 +68,11 @@ pnpm build
 
 ## Deployment
 
-The existing Vercel project builds the Vite output and uses `vercel.json` rewrites for direct application and Auth routes. Ensure the public `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` build variables are set. Supabase is the only application backend.
+The existing Vercel project builds the Vite output, serves the `api/chat.ts` serverless function, and uses `vercel.json` rewrites for direct application and Auth routes. Set the public `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` build variables, plus the server-only `OPENROUTER_API_KEY`. Redeploy after changing environment variables. The API forwards at most 12 in-memory chat turns to OpenRouter, caps message size and output, applies a best-effort per-IP rate limit, and does not log or persist chat content.
 
 ## Privacy and limitations
 
-A user must sign in to access the application. Database row-level security and private Storage policies enforce account ownership independently of client-side filters. Signed source-file links are short-lived. OCR and prediction results are estimates and should be checked against the official bill and applicable tariff.
+A user must sign in to access the application. Database row-level security and private Storage policies enforce account ownership independently of client-side filters. Signed source-file links are short-lived. The Power Sense website does not save chatbot history, but chat turns are sent to OpenRouter's free NVIDIA model; OpenRouter's model page says free-route prompts may be logged for security and product improvement. Users should not include personal or confidential bill information. OCR and prediction results are estimates and should be checked against the official bill and applicable tariff.
 
 ## Troubleshooting
 
