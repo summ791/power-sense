@@ -337,7 +337,7 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
     : "";
   const detailedAnswer = asksForDetailedAnswer(messages);
   const responseLengthPrompt = detailedAnswer
-    ? "\n\nThe user explicitly requested a detailed answer. Give a thorough but organized explanation, with relevant steps or a short example when useful; do not force it into the normal short-answer limit. Stay focused on the exact question."
+    ? "\n\nThe user explicitly requested a detailed answer. Give a thorough but organized explanation, with relevant steps or a short example when useful; do not force it into the normal short-answer limit. Stay focused on the exact question. Format using only Markdown the chat supports: short headings, paragraphs, bullets, and sparing bold. Write formulas as plain text (example: Energy (kWh) = Power (kW) × Time (hours)); do not use LaTeX, backslash math, Markdown tables, code blocks, or horizontal-rule separators."
     : "";
 
   try {

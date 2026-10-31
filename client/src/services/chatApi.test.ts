@@ -115,6 +115,7 @@ describe("OpenRouter chat API", () => {
     const payload = JSON.parse(String(init.body));
     expect(payload.messages.at(-1).content).toBe(longQuestion);
     expect(payload.messages[0].content).toContain("The user explicitly requested a detailed answer");
+    expect(payload.messages[0].content).toContain("do not use LaTeX, backslash math, Markdown tables, code blocks");
     expect(payload.max_tokens).toBe(900);
   });
 
