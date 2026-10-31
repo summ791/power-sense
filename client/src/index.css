@@ -328,6 +328,7 @@ h2 { color: var(--navy); font-size: 18px; font-weight: 800; letter-spacing: -.01
 .assistant-message p, .assistant-message-content { min-width: 0; max-width: 100%; margin: 0; padding: 10px 12px; color: #304b5d; background: white; border: 1px solid #dce6eb; border-radius: 4px 12px 12px 12px; font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; word-break: normal; }
 .assistant-message.user { align-self: flex-end; justify-content: flex-end; }
 .assistant-message.user p { color: white; background: var(--blue); border-color: var(--blue); border-radius: 12px 4px 12px 12px; }
+.assistant-message.user p { white-space: pre-wrap; }
 .assistant-message-content > :first-child { margin-top: 0; }
 .assistant-message-content > :last-child { margin-bottom: 0; }
 .assistant-message-content p { margin: 0 0 8px; padding: 0; color: inherit; background: transparent; border: 0; border-radius: 0; font-size: inherit; line-height: inherit; }
@@ -338,7 +339,7 @@ h2 { color: var(--navy); font-size: 18px; font-weight: 800; letter-spacing: -.01
 .assistant-message-content li { margin: 3px 0; }
 .assistant-large-text .assistant-message p, .assistant-large-text .assistant-message-content { font-size: 15px; line-height: 1.65; }
 .assistant-large-text .assistant-message-content h1, .assistant-large-text .assistant-message-content h2, .assistant-large-text .assistant-message-content h3 { font-size: 16px; }
-.assistant-large-text .assistant-composer input { font-size: 14px; }
+.assistant-large-text .assistant-composer textarea { font-size: 14px; }
 .assistant-large-text .assistant-suggestions button { font-size: 11px; }
 .assistant-message-content a { color: #1769aa; text-decoration: underline; text-underline-offset: 2px; }
 .assistant-suggestions { display: flex; flex-wrap: wrap; gap: 7px; padding: 11px 15px 9px; background: white; border-top: 1px solid #e4edf1; }
@@ -346,14 +347,15 @@ h2 { color: var(--navy); font-size: 18px; font-weight: 800; letter-spacing: -.01
 .assistant-suggestions > span svg { color: #2d86b5; }
 .assistant-suggestions button { padding: 7px 9px; color: #2e607e; background: #f2f8fa; border: 1px solid #cfe2eb; border-radius: 3px; font-size: 10px; line-height: 1.25; text-align: left; transition: background 140ms ease, border-color 140ms ease; }
 .assistant-suggestions button:hover { background: #e5f3f8; border-color: #9ec9dc; }
-.assistant-composer { display: flex; align-items: center; gap: 8px; padding: 11px 12px 8px; background: white; border-top: 1px solid #e4edf1; }
-.assistant-composer input { width: 100%; min-width: 0; height: 38px; padding: 0 11px; color: var(--foreground); background: #fbfcfd; border: 1px solid #cfdde4; border-radius: 4px; outline: none; font-size: 12px; }
-.assistant-composer input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(23,105,170,.1); }
-.assistant-composer input::placeholder { color: #91a2ad; }
+.assistant-composer { display: flex; align-items: flex-end; gap: 8px; padding: 11px 12px 5px; background: white; border-top: 1px solid #e4edf1; }
+.assistant-composer textarea { width: 100%; min-width: 0; min-height: 42px; max-height: 112px; padding: 9px 11px; color: var(--foreground); background: #fbfcfd; border: 1px solid #cfdde4; border-radius: 4px; outline: none; font: inherit; font-size: 12px; line-height: 1.45; resize: vertical; overflow-y: auto; }
+.assistant-composer textarea:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(23,105,170,.1); }
+.assistant-composer textarea::placeholder { color: #91a2ad; }
 .assistant-composer button { display: grid; place-items: center; width: 38px; height: 38px; flex: 0 0 auto; color: white; background: var(--blue); border-radius: 4px; transition: background 140ms ease, transform 140ms ease; }
 .assistant-composer button:hover:not(:disabled) { background: #145b8c; }
 .assistant-composer button:active:not(:disabled) { transform: scale(.95); }
 .assistant-composer button:disabled { cursor: not-allowed; opacity: .42; }
+.assistant-compose-hint { margin: 0; padding: 0 13px 7px; color: #8b9ca6; background: white; font-size: 9px; line-height: 1.4; text-align: right; }
 .assistant-disclaimer { margin: 0; padding: 0 13px 11px; color: #8b9ca6; background: white; font-size: 9px; text-align: center; }
 @keyframes assistant-in { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @media (max-width: 700px) { .assistant-root { right: 15px; bottom: 15px; } .assistant-panel { width: calc(100vw - 30px); height: min(620px, calc(100vh - 30px)); } .assistant-launcher { min-height: 43px; padding: 0 13px; } }

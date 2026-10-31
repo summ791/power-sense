@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import chatHandler from "../../../api/chat";
+import chatHandler, { asksForDetailedAnswer } from "../../../api/chat";
 
 function createRequest(body: unknown, options: { method?: string; origin?: string; ip?: string } = {}) {
   return {
@@ -91,6 +91,31 @@ describe("OpenRouter chat API", () => {
     expect(payload.messages.at(-1)).toEqual({ role: "user", content: "How do I read my bill?" });
     expect(payload.messages.some((message: { content: string }) => message.content.includes("test-only-secret"))).toBe(false);
     expect(res.headers.get("Cache-Control")).toContain("no-store");
+  });
+
+  it("allows longer messages and raises the answer budget only when the user asks for detail", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-only-key");
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ choices: [{ message: { content: "A detailed test answer." } }] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const res = createResponse();
+    const longQuestion = `${"Please explain the following bill question in detail. ".repeat(65)}Include the first step.`;
+    expect(longQuestion.length).toBeGreaterThan(2000);
+    expect(longQuestion.length).toBeLessThanOrEqual(8000);
+    expect(asksForDetailedAnswer([{ role: "user", content: longQuestion }])).toBe(true);
+    expect(asksForDetailedAnswer([{ role: "user", content: "What is a kWh?" }])).toBe(false);
+
+    await chatHandler(createRequest({ messages: [{ role: "user", content: longQuestion }] }), res);
+
+    expect(res.statusCode).toBe(200);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const payload = JSON.parse(String(init.body));
+    expect(payload.messages.at(-1).content).toBe(longQuestion);
+    expect(payload.messages[0].content).toContain("The user explicitly requested a detailed answer");
+    expect(payload.max_tokens).toBe(900);
   });
 
   it("requires a valid signed-in session before reading account bills", async () => {

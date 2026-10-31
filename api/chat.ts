@@ -30,8 +30,8 @@ type RateLimitEntry = { count: number; resetAt: number };
 const rateLimits = new Map<string, RateLimitEntry>();
 const MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free";
 const MAX_MESSAGES = 12;
-const MAX_MESSAGE_LENGTH = 2000;
-const MAX_TOTAL_CHARS = 10000;
+const MAX_MESSAGE_LENGTH = 8000;
+const MAX_TOTAL_CHARS = 24000;
 const MAX_ACCESS_TOKEN_LENGTH = 5000;
 const RATE_LIMIT_REQUESTS = 10;
 const RATE_LIMIT_WINDOW_MS = 60_000;
@@ -61,6 +61,11 @@ Power Sense's configured Tamil Nadu tariff assumptions (not a substitute for the
 - Meter consumption is normally the current meter reading minus the previous reading. The official provider bill controls final payable amounts and may include arrears, adjustments, or charges not modeled here.
 
 Privacy and safety: Do not ask for or repeat the user's name, service/consumer ID, phone number, address, payment details, meter ID, or raw bill documents. When the signed-in user leaves saved-bill context on, use up to 12 non-identifying summaries only for bill-related questions. Use them only to answer the current question; do not infer identity. OpenRouter may log prompts; remind users not to include personal identifiers. Chats are not stored by Power Sense. For electrical hazards, tell the user to contact their local electricity provider or emergency services immediately.`;
+
+export function asksForDetailedAnswer(messages: ChatMessage[]) {
+  const latestQuestion = messages[messages.length - 1]?.content ?? "";
+  return /\b(in detail|detailed(?:\s+(?:answer|explanation|steps?))?|more detail|more detailed|longer(?:\s+(?:answer|explanation|message|reply|response))?|long answer|longer message|more words|extended answer|explain fully|full explanation|step[- ]by[- ]step|elaborate|comprehensive|with examples|show (?:all )?(?:the )?steps)\b/i.test(latestQuestion);
+}
 
 class BillContextAuthError extends Error {}
 class BillContextUnavailableError extends Error {}
@@ -330,6 +335,10 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
   const billContextPrompt = billContext.length
     ? `\n\nNon-identifying summaries from only the currently signed-in user's saved account bills: ${JSON.stringify(billContext)}. Use only to answer relevant questions. If the summaries do not contain the requested detail, say so rather than guessing. These are saved/extracted records, not an official bill.`
     : "";
+  const detailedAnswer = asksForDetailedAnswer(messages);
+  const responseLengthPrompt = detailedAnswer
+    ? "\n\nThe user explicitly requested a detailed answer. Give a thorough but organized explanation, with relevant steps or a short example when useful; do not force it into the normal short-answer limit. Stay focused on the exact question."
+    : "";
 
   try {
     const upstream = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -342,8 +351,8 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
       },
       body: JSON.stringify({
         model: MODEL,
-        messages: [{ role: "system", content: `${SYSTEM_PROMPT}${billContextPrompt}` }, ...messages],
-        max_tokens: 220,
+        messages: [{ role: "system", content: `${SYSTEM_PROMPT}${billContextPrompt}${responseLengthPrompt}` }, ...messages],
+        max_tokens: detailedAnswer ? 900 : 220,
         temperature: 0.2,
       }),
       signal: AbortSignal.timeout(55_000),

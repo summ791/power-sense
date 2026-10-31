@@ -1,4 +1,4 @@
-import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent, ReactNode, useEffect, useRef, useState } from "react";
 import { Bot, ChevronDown, FileText, MessageCircle, Plus, Send, X, Zap } from "lucide-react";
 import { supabase } from "../services/supabase";
 import { estimateTamilNaduBill, inferTamilNaduBillingCycle, normaliseTamilNaduCategory } from "../services/tariff";
@@ -242,6 +242,13 @@ export function PowerSenseAssistant({ hasSavedBills = false, billContextStatus =
     void submit(draft);
   };
 
+  const onComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+      event.preventDefault();
+      void submit(draft);
+    }
+  };
+
   return (
     <div className={`assistant-root ${open ? "is-open" : ""}`}>
       {open && (
@@ -325,18 +332,22 @@ export function PowerSenseAssistant({ hasSavedBills = false, billContextStatus =
           )}
 
           <form className="assistant-composer" onSubmit={onSubmit}>
-            <label className="sr-only" htmlFor="assistant-question">Ask Power Sense Assistant</label>
-            <input
+            <label className="sr-only" htmlFor="assistant-question">Ask Power Sense Assistant. Enter sends; Shift plus Enter adds a new line.</label>
+            <textarea
               id="assistant-question"
+              rows={2}
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
-              placeholder={isSending ? "Waiting for the assistant…" : "Ask about your electricity bill…"}
+              onKeyDown={onComposerKeyDown}
+              placeholder={isSending ? "Waiting for the assistant…" : "Ask a question… (Shift+Enter for a new line)"}
               autoComplete="off"
-              maxLength={2000}
+              maxLength={8000}
               disabled={isSending}
+              aria-describedby="assistant-compose-hint"
             />
             <button type="submit" aria-label="Send question" disabled={!draft.trim() || isSending}><Send size={16} /></button>
           </form>
+          <p id="assistant-compose-hint" className="assistant-compose-hint">Long questions are welcome · {draft.length.toLocaleString("en-IN")}/8,000 · Enter to send · Shift+Enter for new line</p>
           <p className="assistant-disclaimer">
             Chats aren’t saved by Power Sense. OpenRouter may log prompts. {billContextEnabled
               ? "For questions about your bills, Power Sense securely reads up to 12 of your own saved summaries under your account permissions. Only billing month, tariff category, units and charges are shared with the AI; names, account IDs, meter IDs and files are excluded. Turn Bills off to disable that context."
