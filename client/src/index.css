@@ -311,6 +311,13 @@ h2 { color: var(--navy); font-size: 18px; font-weight: 800; letter-spacing: -.01
 .assistant-identity span { margin-top: 4px; color: #b8d0df; font-size: 10px; }
 .assistant-identity span i { display: inline-block; width: 6px; height: 6px; margin-right: 5px; background: #6ee0a8; border-radius: 50%; }
 .assistant-header-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.assistant-bills-toggle, .assistant-accessibility-toggle { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 29px; padding: 0 7px; color: #c8deea; background: transparent; border: 1px solid rgba(184,208,223,.35); border-radius: 4px; font-size: 10px; font-weight: 800; transition: color 140ms ease, background 140ms ease, border-color 140ms ease; }
+.assistant-bills-toggle:hover:not(:disabled), .assistant-accessibility-toggle:hover { color: white; background: rgba(255,255,255,.12); border-color: rgba(184,208,223,.7); }
+.assistant-bills-toggle.is-on, .assistant-accessibility-toggle.is-on { color: white; background: rgba(130,198,226,.18); border-color: rgba(184,208,223,.75); }
+.assistant-bills-toggle:disabled { cursor: not-allowed; opacity: .55; }
+.assistant-bills-toggle i { width: 6px; height: 6px; background: #8a9da9; border-radius: 50%; }
+.assistant-bills-toggle.is-on i { background: #6ee0a8; box-shadow: 0 0 0 2px rgba(110,224,168,.16); }
+.assistant-accessibility-toggle { min-width: 31px; padding: 0 5px; font-size: 12px; }
 .assistant-new-chat { display: inline-flex; align-items: center; gap: 4px; min-height: 29px; padding: 0 8px; color: #c8deea; border: 1px solid rgba(184,208,223,.35); border-radius: 4px; font-size: 10px; font-weight: 700; transition: color 140ms ease, background 140ms ease, border-color 140ms ease; }
 .assistant-new-chat:hover { color: white; background: rgba(255,255,255,.12); border-color: rgba(184,208,223,.7); }
 .assistant-icon-button { display: grid; place-items: center; width: 31px; height: 31px; flex: 0 0 auto; color: #b8d0df; border-radius: 4px; transition: color 140ms ease, background 140ms ease; }
@@ -329,6 +336,10 @@ h2 { color: var(--navy); font-size: 18px; font-weight: 800; letter-spacing: -.01
 .assistant-message-content code { padding: 1px 4px; color: #234c65; background: #edf4f7; border-radius: 3px; font-family: ui-monospace, monospace; font-size: .94em; }
 .assistant-message-content ul, .assistant-message-content ol { margin: 0 0 8px; padding-left: 18px; }
 .assistant-message-content li { margin: 3px 0; }
+.assistant-large-text .assistant-message p, .assistant-large-text .assistant-message-content { font-size: 15px; line-height: 1.65; }
+.assistant-large-text .assistant-message-content h1, .assistant-large-text .assistant-message-content h2, .assistant-large-text .assistant-message-content h3 { font-size: 16px; }
+.assistant-large-text .assistant-composer input { font-size: 14px; }
+.assistant-large-text .assistant-suggestions button { font-size: 11px; }
 .assistant-message-content a { color: #1769aa; text-decoration: underline; text-underline-offset: 2px; }
 .assistant-suggestions { display: flex; flex-wrap: wrap; gap: 7px; padding: 11px 15px 9px; background: white; border-top: 1px solid #e4edf1; }
 .assistant-suggestions > span { width: 100%; display: flex; align-items: center; gap: 5px; margin-bottom: 1px; color: #7b909d; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
@@ -346,4 +357,5 @@ h2 { color: var(--navy); font-size: 18px; font-weight: 800; letter-spacing: -.01
 .assistant-disclaimer { margin: 0; padding: 0 13px 11px; color: #8b9ca6; background: white; font-size: 9px; text-align: center; }
 @keyframes assistant-in { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @media (max-width: 700px) { .assistant-root { right: 15px; bottom: 15px; } .assistant-panel { width: calc(100vw - 30px); height: min(620px, calc(100vh - 30px)); } .assistant-launcher { min-height: 43px; padding: 0 13px; } }
+@media (max-width: 420px) { .assistant-header { gap: 6px; padding: 0 9px; } .assistant-identity { gap: 7px; } .assistant-identity strong { font-size: 11px; } .assistant-identity span { font-size: 9px; } .assistant-header-actions { gap: 3px; } .assistant-bills-toggle { width: 29px; min-width: 29px; padding: 0; } .assistant-bills-toggle > span, .assistant-new-chat > span { display: none; } .assistant-new-chat { width: 29px; padding: 0; justify-content: center; } .assistant-accessibility-toggle { min-width: 29px; width: 29px; } }
 @media (prefers-reduced-motion: reduce) { .assistant-panel { animation: none; } .assistant-launcher, .assistant-composer button { transition: none; } }

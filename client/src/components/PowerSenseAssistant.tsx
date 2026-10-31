@@ -1,5 +1,6 @@
 import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
-import { Bot, ChevronDown, MessageCircle, Plus, Send, X, Zap } from "lucide-react";
+import { Bot, ChevronDown, FileText, MessageCircle, Plus, Send, X, Zap } from "lucide-react";
+import { supabase } from "../services/supabase";
 import { estimateTamilNaduBill, inferTamilNaduBillingCycle, normaliseTamilNaduCategory } from "../services/tariff";
 
 type ChatMessage = {
@@ -9,6 +10,11 @@ type ChatMessage = {
 };
 
 type ApiMessage = { role: "assistant" | "user"; content: string };
+export type AssistantBillContextStatus = "signed-out" | "loading" | "ready" | "error";
+type PowerSenseAssistantProps = {
+  hasSavedBills?: boolean;
+  billContextStatus?: AssistantBillContextStatus;
+};
 
 const inlineMarkdownToken = /(\*\*[^*]+\*\*|__[^_]+__|`[^`]+`|(?<!\*)\*[^*]+\*(?!\*)|(?<!_)_[^_]+_(?!_))/g;
 
@@ -121,11 +127,26 @@ function formatApiMessages(messages: ChatMessage[]): ApiMessage[] {
     .map(({ role, text }) => ({ role, content: text }));
 }
 
-export function PowerSenseAssistant() {
+export function isPersonalBillQuestion(text: string) {
+  const personal = /\b(my|mine|our|saved|uploaded|in my account)\b/i.test(text);
+  const comparison = /\b(last|latest|recent|previous|average|compare|compared|historical|history)\b/i.test(text)
+    && /\b(bill|bills|usage|consumption|units|kwh|total|amount|charges|payment|paid|pay|spend|reading|month)\b/i.test(text);
+  return personal || comparison;
+}
+
+function asksAboutOwnBills(messages: ChatMessage[]) {
+  return messages.some((message) => message.role === "user" && isPersonalBillQuestion(message.text));
+}
+
+export function PowerSenseAssistant({ hasSavedBills = false, billContextStatus = "signed-out" }: PowerSenseAssistantProps) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([openingMessage]);
   const [isSending, setIsSending] = useState(false);
+  const [useSavedBills, setUseSavedBills] = useState(true);
+  const [largeText, setLargeText] = useState(false);
+  const canUseBillContext = billContextStatus === "ready" && hasSavedBills;
+  const billContextEnabled = canUseBillContext && useSavedBills;
   const messagesRef = useRef<HTMLDivElement>(null);
   const nextId = useRef(2);
   const conversationVersion = useRef(0);
@@ -167,11 +188,26 @@ export function PowerSenseAssistant() {
     setIsSending(true);
     setMessages((current) => [...current, { id: replyId, role: "assistant", text: "Thinking…" }]);
 
+    const hasBillFocusedTurn = asksAboutOwnBills(userAndHistory);
+    const includeBillContext = billContextEnabled && hasBillFocusedTurn;
     try {
+      let accessToken: string | undefined;
+      if (includeBillContext) {
+        if (!supabase) throw new Error("Secure access to your saved bills is unavailable. Please try again later.");
+        const { data, error } = await supabase.auth.getSession();
+        if (error || !data.session?.access_token) throw new Error("Your account session expired. Sign in again to ask about saved bills.");
+        accessToken = data.session.access_token;
+      }
       const response = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: formatApiMessages(userAndHistory) }),
+        headers: {
+          "Content-Type": "application/json",
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
+        body: JSON.stringify({
+          messages: formatApiMessages(userAndHistory),
+          includeBillContext,
+        }),
         signal: controller.signal,
       });
       const payload = (await response.json()) as { reply?: unknown; error?: unknown };
@@ -207,7 +243,7 @@ export function PowerSenseAssistant() {
   return (
     <div className={`assistant-root ${open ? "is-open" : ""}`}>
       {open && (
-        <section className="assistant-panel" role="dialog" aria-modal="false" aria-labelledby="assistant-title">
+        <section className={`assistant-panel ${largeText ? "assistant-large-text" : ""}`} role="dialog" aria-modal="false" aria-labelledby="assistant-title">
           <header className="assistant-header">
             <div className="assistant-identity">
               <div className="assistant-avatar" aria-hidden="true"><Bot size={21} strokeWidth={2.2} /></div>
@@ -217,6 +253,41 @@ export function PowerSenseAssistant() {
               </div>
             </div>
             <div className="assistant-header-actions">
+              <button
+                className={`assistant-bills-toggle ${billContextEnabled ? "is-on" : ""}`}
+                type="button"
+                onClick={() => {
+                  const next = !useSavedBills;
+                  setUseSavedBills(next);
+                  if (!next) startNewChat();
+                }}
+                disabled={!canUseBillContext || isSending}
+                aria-label={billContextEnabled ? "Turn off saved bill context" : "Turn on saved bill context"}
+                aria-pressed={billContextEnabled}
+                title={billContextStatus === "signed-out"
+                  ? "Sign in and save bills to personalize answers"
+                  : billContextStatus === "loading"
+                    ? "Loading your saved bills"
+                    : billContextStatus === "error"
+                      ? "Saved bills are unavailable right now"
+                      : canUseBillContext
+                        ? billContextEnabled ? "Saved-bill context is on" : "Saved-bill context is off"
+                        : "Save a bill to enable personalized answers"}
+              >
+                <FileText size={14} />
+                <span>Bills</span>
+                <i aria-hidden="true" />
+              </button>
+              <button
+                className={`assistant-accessibility-toggle ${largeText ? "is-on" : ""}`}
+                type="button"
+                onClick={() => setLargeText((enabled) => !enabled)}
+                aria-label={largeText ? "Use standard assistant text size" : "Increase assistant text size"}
+                aria-pressed={largeText}
+                title={largeText ? "Use standard text size" : "Increase text size"}
+              >
+                A+
+              </button>
               <button className="assistant-new-chat" onClick={startNewChat} aria-label="Start a new chat">
                 <Plus size={14} />
                 <span>New chat</span>
@@ -264,7 +335,13 @@ export function PowerSenseAssistant() {
             />
             <button type="submit" aria-label="Send question" disabled={!draft.trim() || isSending}><Send size={16} /></button>
           </form>
-          <p className="assistant-disclaimer">Chats aren’t saved by Power Sense. Messages go to OpenRouter’s free NVIDIA model and may be logged by the provider; don’t include personal or confidential bill details. Verify charges against your official bill.</p>
+          <p className="assistant-disclaimer">
+            Chats aren’t saved by Power Sense. OpenRouter may log prompts. {billContextEnabled
+              ? "For questions about your bills, Power Sense securely reads up to 12 of your own saved summaries under your account permissions. Only billing month, tariff category, units and charges are shared with the AI; names, account IDs, meter IDs and files are excluded. Turn Bills off to disable that context."
+              : billContextStatus === "signed-out"
+                ? "Sign in and save bills to enable personalized bill answers."
+                : "Saved bill context is off or unavailable; the assistant answers from your question only."} Verify charges against your official bill.
+          </p>
         </section>
       )}
 

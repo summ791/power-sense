@@ -78,7 +78,7 @@ import {
 } from "./services/storage";
 import { dataModeLabel, supabaseConfigured } from "./services/supabase";
 import { predictNextMonth } from "./services/prediction";
-import { PowerSenseAssistant } from "./components/PowerSenseAssistant";
+import { PowerSenseAssistant, type AssistantBillContextStatus } from "./components/PowerSenseAssistant";
 import {
   TAMIL_NADU_TARIFF_OPTIONS,
   TAMIL_NADU_TARIFF_SOURCE,
@@ -152,6 +152,7 @@ function AuthenticatedApp() {
   const { user } = useAuth();
   const [bills, setBills] = useState<BillRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [billContextStatus, setBillContextStatus] = useState<AssistantBillContextStatus>("loading");
   const [notice, setNotice] = useState<{
     type: "success" | "error" | "info";
     text: string;
@@ -166,9 +167,13 @@ function AuthenticatedApp() {
 
   const refresh = async () => {
     setLoading(true);
+    setBillContextStatus("loading");
     try {
-      setBills(await listBills());
+      const savedBills = await listBills();
+      setBills(savedBills);
+      setBillContextStatus("ready");
     } catch (error) {
+      setBillContextStatus("error");
       setNotice({
         type: "error",
         text:
@@ -182,6 +187,7 @@ function AuthenticatedApp() {
   };
   useEffect(() => {
     setBills([]);
+    setBillContextStatus("loading");
     setDraft(emptyBillDraft);
     setEditingId(null);
     setPendingFile(undefined);
@@ -450,7 +456,7 @@ function AuthenticatedApp() {
         </Switch>
       </main>
       <Footer />
-      <PowerSenseAssistant />
+      <PowerSenseAssistant hasSavedBills={bills.length > 0} billContextStatus={billContextStatus} />
     </div>
   );
 }

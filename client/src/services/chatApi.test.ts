@@ -89,6 +89,80 @@ describe("OpenRouter chat API", () => {
     expect(res.headers.get("Cache-Control")).toContain("no-store");
   });
 
+  it("requires a valid signed-in session before reading account bills", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-only-key");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const res = createResponse();
+
+    await chatHandler(createRequest({ ...validBody, includeBillContext: true }), res);
+
+    expect(res.statusCode).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(res.body).toEqual({ error: "A valid account session is required." });
+  });
+
+  it("loads only the signed-in user's limited bill summary and strips identifiers before OpenRouter", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-only-key");
+    vi.stubEnv("VITE_SUPABASE_URL", "https://power-sense-test.supabase.co");
+    vi.stubEnv("VITE_SUPABASE_ANON_KEY", "test-anon-key");
+    const privateRow = {
+      billing_date: "2026-09-30",
+      billing_period: "01 Aug 2026 - 30 Sep 2026",
+      previous_reading: 1500,
+      current_reading: 1700,
+      units_consumed: 200,
+      energy_charge: 0,
+      fixed_charge: 0,
+      tax: 0,
+      other_charge: 0,
+      total_amount: 0,
+      tariff_data: { category: "residential", description: "Domestic LT-IA" },
+      customer_name: "Private Test Person",
+      consumer_number: "987654321",
+      meter_number: "METER-SECRET",
+      source_file_path: "user-id/private-bill.pdf",
+    };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ id: "user-id", email: "private@example.test" }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => [privateRow] })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ choices: [{ message: { content: "Your saved record shows 200 units." } }] }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const res = createResponse();
+
+    const request = createRequest({
+      ...validBody,
+      includeBillContext: true,
+    });
+    request.headers.authorization = "Bearer valid-supabase-session-token";
+    await chatHandler(request, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const [authUrl, authInit] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    expect(String(authUrl)).toBe("https://power-sense-test.supabase.co/auth/v1/user");
+    expect(new Headers(authInit.headers).get("authorization")).toBe("Bearer valid-supabase-session-token");
+    const [billsUrl, billsInit] = fetchMock.mock.calls[1] as [URL, RequestInit];
+    const query = new URL(String(billsUrl));
+    expect(query.pathname).toBe("/rest/v1/bills");
+    expect(query.searchParams.get("user_id")).toBe("eq.user-id");
+    expect(query.searchParams.get("limit")).toBe("12");
+    expect(query.searchParams.get("select")).toBe("billing_date,billing_period,previous_reading,current_reading,units_consumed,energy_charge,fixed_charge,tax,other_charge,total_amount,tariff_data");
+    expect(new Headers(billsInit.headers).get("authorization")).toBe("Bearer valid-supabase-session-token");
+    const [, openRouterInit] = fetchMock.mock.calls[2] as [string, RequestInit];
+    const upstreamBody = JSON.parse(String(openRouterInit.body));
+    const systemContent = upstreamBody.messages[0].content as string;
+    expect(JSON.stringify(upstreamBody)).not.toContain("valid-supabase-session-token");
+    expect(systemContent).toContain('"period":"Sep 2026"');
+    expect(systemContent).toContain('"units":200');
+    expect(systemContent).toContain('"category":"residential"');
+    expect(systemContent).not.toContain("Private Test Person");
+    expect(systemContent).not.toContain("987654321");
+    expect(systemContent).not.toContain("METER-SECRET");
+    expect(systemContent).not.toContain("private-bill.pdf");
+    expect(systemContent).not.toContain("private@example.test");
+  });
+
   it("returns a generic error when OpenRouter rejects a request", async () => {
     vi.stubEnv("OPENROUTER_API_KEY", "test-only-secret");
     const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 429, json: async () => ({ error: "provider detail" }) });

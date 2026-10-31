@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { renderAssistantText } from "./PowerSenseAssistant";
+import { isPersonalBillQuestion, renderAssistantText } from "./PowerSenseAssistant";
 
 describe("assistant reply formatting", () => {
   it("renders Markdown emphasis as formatting instead of visible asterisks", () => {
@@ -19,5 +19,12 @@ describe("assistant reply formatting", () => {
     expect(markup).toContain("<p>Steps:</p>");
     expect(markup).toContain("<ul><li>Check the previous reading.</li><li>Check the current reading.</li></ul>");
     expect(markup).not.toContain("- Check");
+  });
+
+  it("shares account bill context only for questions that refer to the user's own bills", () => {
+    expect(isPersonalBillQuestion("What was my electricity bill last month?")).toBe(true);
+    expect(isPersonalBillQuestion("Compare my saved usage history.")).toBe(true);
+    expect(isPersonalBillQuestion("How does the Tamil Nadu subsidy work?")).toBe(false);
+    expect(isPersonalBillQuestion("How do I calculate electricity units?")).toBe(false);
   });
 });
