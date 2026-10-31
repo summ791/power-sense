@@ -210,7 +210,7 @@ export function PowerSenseAssistant() {
         <section className="assistant-panel" role="dialog" aria-modal="false" aria-labelledby="assistant-title">
           <header className="assistant-header">
             <div className="assistant-identity">
-              <span className="assistant-avatar" aria-hidden="true"><Bot size={21} strokeWidth={2.2} /></span>
+              <div className="assistant-avatar" aria-hidden="true"><Bot size={21} strokeWidth={2.2} /></div>
               <div>
                 <strong id="assistant-title">Power Sense Assistant</strong>
                 <span><i /> AI-powered · Nemotron free route</span>
