@@ -82,8 +82,12 @@ describe("OpenRouter chat API", () => {
     expect(new Headers(init.headers).get("authorization")).toBe("Bearer test-only-secret");
     const payload = JSON.parse(String(init.body));
     expect(payload.model).toBe("nvidia/nemotron-3-ultra-550b-a55b:free");
-    expect(payload.messages[0].content).toContain("use **bold** for important words or phrases");
-    expect(payload.messages[0].content).toContain("Avoid decorative stars");
+    expect(payload.messages[0].content).toContain("Answer the latest question directly in the first sentence");
+    expect(payload.messages[0].content).toContain("normally no more than 45 words");
+    expect(payload.messages[0].content).toContain("Add at most one brief, relevant sentence starting with \"Tip:\"");
+    expect(payload.messages[0].content).toContain("Use **bold** sparingly");
+    expect(payload.max_tokens).toBe(220);
+    expect(payload.temperature).toBe(0.2);
     expect(payload.messages.at(-1)).toEqual({ role: "user", content: "How do I read my bill?" });
     expect(payload.messages.some((message: { content: string }) => message.content.includes("test-only-secret"))).toBe(false);
     expect(res.headers.get("Cache-Control")).toContain("no-store");

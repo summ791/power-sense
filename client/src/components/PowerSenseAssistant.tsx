@@ -91,22 +91,22 @@ const quickQuestions = [
 const openingMessage: ChatMessage = {
   id: 1,
   role: "assistant",
-  text: "Hello. I’m the Power Sense Assistant, now powered by an AI model. I can guide you through bill OCR, Tamil Nadu residential and commercial tariff rules, subsidies, warnings, and usage forecasts. What would you like to understand?",
+  text: "Hi! Ask me about your bill, units, Tamil Nadu tariffs, or saving electricity.",
 };
 
-function answerForCalculation(question: string): string | null {
+export function answerForCalculation(question: string): string | null {
   const text = question.toLowerCase().trim();
   const readingMatch = text.match(/(?:previous|opening|from)\D*(\d+(?:\.\d+)?)\D+(?:current|present|to)\D*(\d+(?:\.\d+)?)/);
-  if (readingMatch) {
+  if (readingMatch && !/\b(estimate|bill|amount|cost|price|payable)\b/.test(text)) {
     const previous = Number(readingMatch[1]);
     const current = Number(readingMatch[2]);
     const units = current - previous;
     return units >= 0
-      ? `Your calculated consumption is ${units.toLocaleString("en-IN")} units: current reading ${current} minus previous reading ${previous}. Compare this with the Units Consumed field on the bill before saving.`
-      : `The readings produce a negative result: ${current} minus ${previous}. Check whether the meter rolled over or the readings were entered in the wrong order.`;
+      ? `Units used: ${current.toLocaleString("en-IN")} − ${previous.toLocaleString("en-IN")} = ${units.toLocaleString("en-IN")} kWh.`
+      : `The readings give a negative difference (${units.toLocaleString("en-IN")} kWh). Check their order or whether the meter rolled over.`;
   }
   const unitsMatch = text.match(/(\d[\d,]*(?:\.\d+)?)\s*(?:units?|kwh)/);
-  if (unitsMatch && /estimate|calculate|amount|cost|price|bill/.test(text)) {
+  if (unitsMatch && /\b(estimate|calculate|amount|cost|price|payable)\b/.test(text)) {
     const units = Number(unitsMatch[1].replace(/,/g, ""));
     const category = normaliseTamilNaduCategory(text);
     const cycle = inferTamilNaduBillingCycle(text);
@@ -115,7 +115,9 @@ function answerForCalculation(question: string): string | null {
       billingCycle: cycle,
       connectedLoadKw: loadMatch ? Number(loadMatch[1]) : undefined,
     });
-    return `Indicative ${category} estimate for ${units.toLocaleString("en-IN")} units on a ${cycle} cycle: ₹${Math.round(estimate.total).toLocaleString("en-IN")}. Payable units after the configured rule: ${estimate.payableUnits}. This excludes provider-specific arrears, corrections, and special adjustments.`;
+    const assumed = /commercial|general purpose|tariff v|lt[- ]?v|shop|office|business|residential|domestic|tariff a|lt[- ]?ia/.test(text) ? "" : " (assuming residential)";
+    const subsidy = estimate.freeUnits > 0 ? ` ${estimate.freeUnits} free units; ${estimate.payableUnits} payable.` : category === "commercial" ? " No domestic subsidy applies." : "";
+    return `Estimated bill: ₹${Math.round(estimate.total).toLocaleString("en-IN")} for ${units.toLocaleString("en-IN")} units, ${cycle}${assumed}.${subsidy} Actual bill may vary.`;
   }
   return null;
 }
@@ -123,7 +125,7 @@ function answerForCalculation(question: string): string | null {
 function formatApiMessages(messages: ChatMessage[]): ApiMessage[] {
   return messages
     .filter((message) => message.role === "user" || message.role === "assistant")
-    .slice(-12)
+    .slice(-8)
     .map(({ role, text }) => ({ role, content: text }));
 }
 

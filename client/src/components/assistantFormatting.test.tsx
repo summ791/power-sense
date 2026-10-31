@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { isPersonalBillQuestion, renderAssistantText } from "./PowerSenseAssistant";
+import { answerForCalculation, isPersonalBillQuestion, renderAssistantText } from "./PowerSenseAssistant";
 
 describe("assistant reply formatting", () => {
   it("renders Markdown emphasis as formatting instead of visible asterisks", () => {
@@ -26,5 +26,21 @@ describe("assistant reply formatting", () => {
     expect(isPersonalBillQuestion("Compare my saved usage history.")).toBe(true);
     expect(isPersonalBillQuestion("How does the Tamil Nadu subsidy work?")).toBe(false);
     expect(isPersonalBillQuestion("How do I calculate electricity units?")).toBe(false);
+  });
+
+  it("does not replace a factual units question with an unrelated bill estimate", () => {
+    expect(answerForCalculation("What does 200 units mean?")).toBeNull();
+  });
+
+  it("answers meter-reading and bill-estimate requests briefly and directly", () => {
+    const units = answerForCalculation("Previous reading 1200, current reading 1325") ?? "";
+    const estimate = answerForCalculation("Estimate bill amount for 300 units residential bi-monthly") ?? "";
+
+    expect(units).toContain("125 kWh");
+    expect(units.split(/\s+/).length).toBeLessThan(20);
+    expect(estimate).toContain("Estimated bill: ₹");
+    expect(estimate).toContain("200 free units; 100 payable.");
+    expect(estimate.split(/\s+/).length).toBeLessThan(35);
+    expect(answerForCalculation("Estimate bill amount for 300 units bi-monthly")).toContain("assuming residential");
   });
 });
